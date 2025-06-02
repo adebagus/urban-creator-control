@@ -50,13 +50,13 @@ function flashToolBoard(device) {
 function openFlashingTool() {
 
   selectedControllerType = 'blackboxx32'
-  
+
   var template = `
     <ul data-role="tabs" data-expand="true">
       <li><a href="#" onclick="flashToolBoard('blackboxx32');"><img src="/wizards/flashingtool2/img/bbx32-icon.png" height="32"> <b>BlackBox X32</b></a></li>
       <!-- li><a href="#" onclick="flashToolBoard('blackbox4x');"><img src="/wizards/flashingtool2/img/bb4x-icon.png" height="32"> <b>BlackBox 4X</b></a></li -->
       <li><a href="#" onclick="flashToolBoard('interfacev1');"><img src="/wizards/flashingtool2/img/interfacev1-icon.png" height="32"> <b>Interface</b></a></li>
-      <li><a href="#" onclick="flashToolBoard('bloxv1');"><img src="/wizards/flashingtool2/img/blox-icon.png" height="32"> <b>BLOX</b></a></li>
+      <!-- li><a href="#" onclick="flashToolBoard('bloxv1');"><img src="/wizards/flashingtool2/img/blox-icon.png" height="32"> <b>BLOX</b></a></li-->
     </ul>`
 
   template += `
