@@ -1,3 +1,6 @@
+v1.0.390
+- Removed mailling list signup form to allow access to CONTROL
+- Lowered update check frequency
 v1.0.389
 - Add pseudo filename entry for surfacing wizard jobs (cosmetic) #383
 - Add Mpos Gotozero menu item to Mobile Jog

@@ -48,6 +48,9 @@ function flashToolBoard(device) {
 }
 
 function openFlashingTool() {
+
+  selectedControllerType = 'blackboxx32'
+  
   var template = `
     <ul data-role="tabs" data-expand="true">
       <li><a href="#" onclick="flashToolBoard('blackboxx32');"><img src="/wizards/flashingtool2/img/bbx32-icon.png" height="32"> <b>BlackBox X32</b></a></li>
