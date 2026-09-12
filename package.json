@@ -1,5 +1,5 @@
 {
-  "name": "OpenBuildsCONTROL",
+  "name": "urban-creator-control-dev",
   "version": "1.0.390",
   "license": "AGPL-3.0",
   "description": "OpenBuildsCONTROL CNC Machine Host Software",
@@ -71,8 +71,8 @@
       }
     },
     "icon": "build/icon.icns",
-    "appId": "openbuilds.control",
-    "productName": "OpenBuildsCONTROL",
+    "appId": "id.urbancreator.control.dev",
+    "productName": "Urban Creator CONTROL (DEV)",
     "asar": true,
     "nsis": {
       "oneClick": false,

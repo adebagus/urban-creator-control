@@ -186,7 +186,11 @@ var lastsentuploadprogress = 0;
 const electron = require('electron');
 const electronApp = electron.app;
 
-electronApp.setAppUserModelId("openbuilds.control")
+// Urban Creator CONTROL (DEV): keep userData isolated from OpenBuilds CONTROL
+// regardless of app "name"/productName changes made in later stages.
+electronApp.setPath('userData', path.join(electronApp.getPath('appData'), 'UrbanCreatorCONTROL-dev'))
+
+electronApp.setAppUserModelId("id.urbancreator.control.dev")
 
 const {
   dialog
