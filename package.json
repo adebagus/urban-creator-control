@@ -45,14 +45,9 @@
   "keywords": [
     "usb"
   ],
-  "repository": "https://github.com/OpenBuilds/OpenBuilds-CONTROL",
+  "repository": "TODO: set Urban Creator CONTROL's own repository URL here in P5",
   "build": {
-    "publish": [
-      {
-        "provider": "github",
-        "vPrefixedTagName": true
-      }
-    ],
+    "publish": null,
     "afterSign": "./notarize.js",
     "mac": {
       "icon": "build/icon.icns",

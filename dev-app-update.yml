@@ -1,3 +1,10 @@
-owner: OpenBuilds
-repo: OpenBuilds-CONTROL
+# P4: auto-update is disabled for now (see app/js/updates.js) while Urban
+# Creator CONTROL doesn't have its own release infrastructure yet (planned
+# for P5). This used to point at owner: OpenBuilds / repo: OpenBuilds-CONTROL
+# - deliberately left pointing nowhere real so that if something ever does
+# call electron-updater's checkForUpdates() again before P5 is done, it
+# fails cleanly (repo not found) instead of silently checking OpenBuilds'
+# real releases. Replace owner/repo with this fork's own repo in P5.
+owner: urban-creator-control-not-yet-configured
+repo: urban-creator-control-not-yet-configured
 provider: github

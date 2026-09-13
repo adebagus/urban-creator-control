@@ -208,13 +208,19 @@ app.post('/uploadCustomFirmware', (req, res) => {
 // end Interface Firmware flash
 
 
-//Note when renewing Convert zerossl cert first `openssl.exe rsa -in domain-key.key -out domain-key.key`
-// fix error:    App threw an error during load
-//               Error: error:06000066:public key routines:OPENSSL_internal:DECODE_ERROR
-
+// P4: this used to load OpenBuilds' own Let's Encrypt key/cert for
+// mymachine.openbuilds.com (privkey1.pem/fullchain1.pem) - that's their
+// credential, not something this fork should carry or present as its own
+// identity, so it's been removed. Replaced with a self-signed, 10-year
+// placeholder generated just for this fork (dev-selfsigned-*.pem, CN=
+// localhost) so the internal HTTPS listener keeps working. It has no CA
+// trust chain, so a browser hitting https://localhost:<port> directly will
+// show an untrusted-certificate warning - nothing in this app currently
+// navigates there itself (the renderer always loads over plain http://),
+// so this only matters if something starts requiring HTTPS specifically.
 var httpsOptions = {
-  key: fs.readFileSync(path.join(__dirname, 'privkey1.pem')),
-  cert: fs.readFileSync(path.join(__dirname, 'fullchain1.pem'))
+  key: fs.readFileSync(path.join(__dirname, 'dev-selfsigned-key.pem')),
+  cert: fs.readFileSync(path.join(__dirname, 'dev-selfsigned-cert.pem'))
 };
 
 const httpsserver = https.createServer(httpsOptions, app).listen(config.webPortSsl, function() {

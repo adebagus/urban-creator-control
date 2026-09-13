@@ -5,6 +5,13 @@ $(document).ready(function() {
 
 
 function checkUpdate() {
+  // P4: disabled for now - this used to auto-check OpenBuilds' own GitHub
+  // repo (see the getJSON URL below) and, without any real confirmation,
+  // auto-download and offer to install THEIR signed installer over this
+  // fork after a 10s countdown. Left in place (not deleted) so it's easy to
+  // re-enable once Urban Creator CONTROL has its own release infrastructure
+  // (P5) - just point the URL below at that repo and remove this return.
+  return;
 
   if (!isMac && webgl) {
 
