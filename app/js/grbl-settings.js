@@ -34,7 +34,7 @@ function loadGrblBackupFile(f) {
       };
 
       checkifchanged();
-      enableLimits(); // Enable or Disable
+      syncHardLimitAndHomingCheckboxes(); // reflect the restored $21/$22, don't overwrite them
       displayDirInvert();
       $("#grblSettingsAdvTab").click();
     }
@@ -110,7 +110,7 @@ function restoreAutoBackup(index) {
   }
   // Call any post-restoration functions you need (e.g., re-enable limits, etc.)
   checkifchanged();
-  enableLimits();
+  syncHardLimitAndHomingCheckboxes(); // reflect the restored $21/$22, don't overwrite them
   displayDirInvert();
   $("#grblSettingsAdvTab").click();
 }
@@ -232,72 +232,32 @@ function grblPopulate() {
     <div id="grbl-settings-basic">
         <ul class="step-list mb-3">
           <li>
-            <h6>Select your Machine<br><small>Tell us what machine you have?</small></h6>
-            <a style="width: 100%;"
-              class="button dropdown-toggle bd-dark dark outline"
-              id="context_toggle2"><img src="img/mch/leadmachine1010.png" /> Select
-              your machine type from the list:</a>
-            <ul class="ribbon-dropdown machine-profile-menu" data-role="dropdown"
-              data-duration="100">
-              <li><a href="#" onclick="selectMachine('custom');"><img
-                    src="img/mch/custom.png" width="16px" /> CUSTOM Machine (Profile
-                  sets sane defaults)</a></li>
+            <h6>Select your Profile<br><small>Router leaves everything as-is. Laser turns on Laser mode ($32) and stops the Z axis from homing ($44) - nothing else is touched.</small></h6>
+            <ul class="image-checkbox-ul">
               <li>
-                <a href="#" class="dropdown-toggle"><img src="img/mch/acro55.png"
-                    width="16px" /> OpenBuilds ACRO</a>
-                <ul class="ribbon-dropdown" data-role="dropdown">
-                  <li onclick="selectMachine('acro55');"><a href="#"><img
-                        src="img/mch/acro55.png" width="16px" /> OpenBuilds ACRO 55</a></li>
-                  <li onclick="selectMachine('acro510');"><a href="#"><img
-                        src="img/mch/acro510.png" width="16px" /> OpenBuilds ACRO
-                      510</a></li>
-                  <li onclick="selectMachine('acro1010');"><a href="#"><img
-                        src="img/mch/acro1010.png" width="16px" /> OpenBuilds ACRO
-                      1010</a></li>
-                  <li onclick="selectMachine('acro1510');"><a href="#"><img
-                        src="img/mch/acro1510.png" width="16px" /> OpenBuilds ACRO
-                      1510</a></li>
-                  <li onclick="selectMachine('acro1515');"><a href="#"><img
-                        src="img/mch/acro1515.png" width="16px" /> OpenBuilds ACRO
-                      1515</a></li>
-                  <li class="divider"></li>
-                  <li onclick="selectMachine('acroa1');"><a href="#"><img
-                        src="img/mch/acroa1.png" width="16px" /> OpenBuilds ACRO A1</a></li>
-                </ul>
+                <input type="radio" name="simpleprofile" id="simpleprofile_router" value="router" onclick="selectMachine('router');">
+                <label for="simpleprofile_router"><img src="./img/toolhead/router11.png" /></label>
+                <div class="image-checkbox-text">Router</div>
               </li>
               <li>
-                <a href="#" class="dropdown-toggle"><img src="img/mch/cbeam.png"
-                    width="16px" /> OpenBuilds C-Beam Machine</a>
-                <ul class="ribbon-dropdown" data-role="dropdown">
-                  <li onclick="selectMachine('cbeam');"><a href="#"><img
-                        src="img/mch/cbeam.png" width="16px" /> OpenBuilds C-Beam
-                      Machine</a></li>
-                  <li onclick="selectMachine('cbeamxl');"><a href="#"><img
-                        src="img/mch/cbeamxl.png" width="16px" /> OpenBuilds C-Beam
-                      XL</a></li>
-                </ul>
+                <input type="radio" name="simpleprofile" id="simpleprofile_laser" value="laser" onclick="selectMachine('laser');">
+                <label for="simpleprofile_laser"><img src="./img/toolhead/laser.png" /></label>
+                <div class="image-checkbox-text">Laser</div>
+              </li>
+            </ul>
+          </li>
+          <li>
+            <h6>Hard Limits &amp; Homing<br><small>Applies no matter which profile above is selected.</small></h6>
+            <ul class="image-checkbox-ul">
+              <li>
+                <input type="checkbox" name="hardlimits" id="hardlimitsenabled" value="hardlimits">
+                <label for="hardlimitsenabled"><img src="./img/toolhead/xtensionslimit.png" /></label>
+                <div class="image-checkbox-text">Hard Limits ($21)</div>
               </li>
               <li>
-                <a href="#" class="dropdown-toggle"><img
-                    src="img/mch/leadmachine1010.png" width="16px" /> OpenBuilds
-                  LEAD Machine</a>
-                <ul class="ribbon-dropdown" data-role="dropdown">
-                  <li onclick="selectMachine('leadmachine1010');"><a href="#"><img
-                        src="img/mch/leadmachine1010.png" width="16px" />OpenBuilds
-                      LEAD 1010</a></li>
-                  <li onclick="selectMachine('leadmachine1010laser');"><a href="#"><img
-                        src="img/mch/leadmachine1010laser.png" width="16px" />OpenBuilds
-                      LEAD 1010 with Laser Module</a></li>
-                  <li onclick="selectMachine('leadmachine1010plasma');"><a href="#"><img
-                        src="img/mch/leadmachine1010plasma.png" width="16px" />OpenBuilds
-                      LEAD 1010 Plasma Add-On</a></li>
-                  <li onclick="selectMachine('leadmachine1515');"><a href="#"><img
-                        src="img/mch/leadmachine1515.png" width="16px" />OpenBuilds
-                      LEAD 1515</a></li>
-                </ul>
-              </li>
-              <li><a href="#" onclick="selectMachine('minimill');"><img
-                    src="img/mch/minimill.png" width="16px" /> OpenBuilds MiniMill</a>
+                <input type="checkbox" name="homing" id="homingenabled" value="homing">
+                <label for="homingenabled"><img src="./img/toolhead/xtensionslimit.png" /></label>
+                <div class="image-checkbox-text">Homing ($22)</div>
               </li>
             </ul>
           </li>
@@ -305,13 +265,6 @@ function grblPopulate() {
             <h6>Add-Ons Installed<br><small>Telling us what kind of attachments the
                 machine has, allows us to pre-configure your Grbl Settings to match</small></h6>
             <ul class="image-checkbox-ul">
-              <li>
-                <input type="checkbox" name="limits" id="limitsinstalled"
-                  value="limits">
-                <label for="limitsinstalled"><img
-                    src="./img/toolhead/xtensionslimit.png" /></label>
-                <div class="image-checkbox-text">Xtension Limit Switches</div>
-              </li>
               <!-- Radio Group -->
               <li>
                 <input type="radio" name="toolhead" id="toolhead_router11"
@@ -429,15 +382,22 @@ function grblPopulate() {
 
     $('#grblSettingsBadge').hide();
 
-    if (grblParams['$21'] == 1 && grblParams['$22'] > 0) {
-      $('#limitsinstalled:checkbox').prop('checked', true);
+    // P6: Hard Limits ($21) and Homing ($22) are independent toggles now,
+    // no longer coupled together under one "limits installed" checkbox.
+    syncHardLimitAndHomingCheckboxes();
+    if (grblParams['$22'] > 0) {
       $('#gotozeroMPos').removeClass('disabled')
       $('#homeBtn').attr('disabled', false)
     } else {
-      $('#limitsinstalled:checkbox').prop('checked', false);
       $('#gotozeroMPos').addClass('disabled')
       $('#homeBtn').attr('disabled', true)
     }
+
+    // P6: best-effort sync of the Router/Laser radio from the firmware's
+    // current $32 - this is a display-only guess (laser mode ON implies the
+    // Laser profile), it never writes anything back to the firmware itself.
+    $('#simpleprofile_laser').prop('checked', parseFloat(grblParams['$32']) == 1);
+    $('#simpleprofile_router').prop('checked', parseFloat(grblParams['$32']) != 1);
 
     // if (grblParams['$33'] == 50 && grblParams['$34'] == 5 && grblParams['$35'] == 5 && grblParams['$36'] == 10) {
     //   setSelectedToolhead('scribe')
@@ -871,8 +831,11 @@ function setup_settings_table() {
     $("#val-13-input").val(parseInt(grblParams['$13'])).trigger("change");
   }, 100);;
 
-  $('#limitsinstalled:checkbox').change(function() {
-    enableLimits();
+  $('#hardlimitsenabled:checkbox').change(function() {
+    toggleHardLimits();
+  });
+  $('#homingenabled:checkbox').change(function() {
+    toggleHoming();
   });
 
   // $('#scribeinstalled:checkbox').change(function() {
@@ -923,34 +886,35 @@ function setup_settings_table() {
   console.log("Updated")
 }
 
-function enableLimits() {
-  var grblParams_lim = {
-    $21: "0", //"Hard limits enable, boolean"
-    $22: "0", //"Homing cycle enable, boolean"
-  }
-  var hasLimits = $('#limitsinstalled').is(':checked');
-  if (hasLimits) {
-    grblParams_lim.$21 = "1"; //"Hard limits enable, boolean"
-    grblParams_lim.$22 = "1"; //"Homing cycle enable, boolean"
-  } else {
-    grblParams_lim.$21 = "0"; //"Hard limits enable, boolean"
-    grblParams_lim.$22 = "0"; //"Homing cycle enable, boolean"
-  }
-  for (var key in grblParams_lim) {
-    if (grblParams_lim.hasOwnProperty(key)) {
-      var j = key.substring(1)
-      var newVal = $("#val-" + j + "-input").val();
-      // console.log("$" + j + " = " + newVal)
-      $("#val-" + j + "-input").val(parseFloat(grblParams_lim[key]))
-    }
-  }
+// P6: Hard Limits ($21) and Homing ($22) used to be forced together as one
+// "limits installed" checkbox (enableLimits()). They're now two independent
+// toggles, each touching only its own setting - nothing else.
+function toggleHardLimits() {
+  var enabled = $('#hardlimitsenabled').is(':checked');
+  $("#val-21-input").val(enabled ? 1 : 0);
   allowGrblSettingsViewScroll = false;
   setTimeout(function() {
     allowGrblSettingsViewScroll = true;
   }, 500);
   checkifchanged();
-  var elm = document.getElementById("grblSettingsLimits");
-  // elm.scrollIntoView(true);
+}
+
+function toggleHoming() {
+  var enabled = $('#homingenabled').is(':checked');
+  $("#val-22-input").val(enabled ? 1 : 0);
+  allowGrblSettingsViewScroll = false;
+  setTimeout(function() {
+    allowGrblSettingsViewScroll = true;
+  }, 500);
+  checkifchanged();
+}
+
+// Syncs the two checkboxes above FROM the current form values - used after
+// loading a settings backup (where $21/$22 came from the backup file itself
+// and must not be overwritten by re-deriving them from checkbox state).
+function syncHardLimitAndHomingCheckboxes() {
+  $('#hardlimitsenabled:checkbox').prop('checked', parseFloat($("#val-21-input").val()) == 1);
+  $('#homingenabled:checkbox').prop('checked', parseFloat($("#val-22-input").val()) > 0);
 }
 
 var grblParams_scribe = {
