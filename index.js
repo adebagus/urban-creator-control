@@ -7,6 +7,17 @@ process.on('uncaughtException', function(err) {
   } else {
     console.log(err);
   }
+  // Record serial port state at crash time - this handler doesn't exit the
+  // process (pre-existing behavior, unchanged here), but knowing whether a
+  // port was open when an uncaught exception hit is the key diagnostic for
+  // tracking down a "stuck COM port" report after the fact.
+  try {
+    var portInfo = 'no port opened yet';
+    if (typeof port !== 'undefined' && port) {
+      portInfo = (port.path || port.remoteAddress || 'unknown') + ', isOpen=' + !!port.isOpen;
+    }
+    serialLog('error', 'uncaughtException: ' + (err && err.stack ? err.stack : err) + ' | serial port state: ' + portInfo);
+  } catch (e) {}
 })
 
 function showErrorDialog(err, attempts) {
@@ -198,6 +209,37 @@ const {
 electronApp.commandLine.appendSwitch('ignore-gpu-blacklist')
 electronApp.commandLine.appendSwitch('enable-gpu-rasterization')
 electronApp.commandLine.appendSwitch('enable-zero-copy')
+
+// --- Serial port lifecycle diagnostics (P1) ---------------------------------
+// Persistent log of every open/close/error on the CNC serial connection, so a
+// blocked-COM-port report can be diagnosed after the fact (console output is
+// not visible in a packaged/tray-mode build). Written to userData so DEV and
+// the original OpenBuilds CONTROL never share a log file.
+function getUserDataDir() {
+  try {
+    if (isElectron() && electronApp && electronApp.getPath) {
+      return electronApp.getPath('userData');
+    }
+  } catch (e) {}
+  return __dirname;
+}
+
+function serialLog(level, message) {
+  var line = '[' + new Date().toISOString() + '] [' + level.toUpperCase() + '] ' + message;
+  console.log(line);
+  try {
+    var logPath = path.join(getUserDataDir(), 'serial.log');
+    try {
+      if (fs.statSync(logPath).size > 2 * 1024 * 1024) { // simple 2MB cap, no rotation needed for this log's volume
+        fs.writeFileSync(logPath, '');
+      }
+    } catch (statErr) {} // file doesn't exist yet - fine
+    fs.appendFileSync(logPath, line + '\n');
+  } catch (e) {
+    console.error('Failed to write serial.log:', e.message);
+  }
+}
+// --- end serial port lifecycle diagnostics ----------------------------------
 
 if (isElectron()) {
   debug_log("Local User Data: " + electronApp.getPath('userData'))
@@ -864,10 +906,7 @@ io.on("connection", function(socket) {
   });
 
   socket.on("quit", function(data) {
-    if (appIcon) {
-      appIcon.destroy();
-    }
-    electronApp.exit(0);
+    quitAndCleanup(0);
   });
 
   socket.on("applyUpdate", function(data) {
@@ -1111,6 +1150,7 @@ io.on("connection", function(socket) {
 
       if (data.type == "usb") {
         console.log("connect", "Connecting to " + data.port + " via " + data.type);
+        serialLog('info', 'Opening USB serial port ' + data.port + ' at baud ' + data.baud);
 
 
         var allowRtsCts = false
@@ -1144,6 +1184,7 @@ io.on("connection", function(socket) {
       port.on("error", function(err) {
         if (err.message != "Port is not open") {
           debug_log("Error: ", err.message);
+          serialLog('error', 'Port error on ' + (data.port || data.ip) + ': ' + err.message);
           var output = {
             'command': '',
             'response': "PORT ERROR: " + err.message,
@@ -1158,6 +1199,8 @@ io.on("connection", function(socket) {
           } else {
             debug_log('ERROR: Machine connection not open!');
           }
+        } else {
+          serialLog('warn', 'Port error suppressed ("Port is not open") on ' + (data.port || data.ip));
         }
 
       });
@@ -1168,11 +1211,13 @@ io.on("connection", function(socket) {
       });
 
       port.on("open", function(e) {
+        serialLog('info', 'Port ' + (port.path || data.port) + ' opened (native "open" event)');
         portOpened(port, data)
       });
 
       port.on("close", function() { // open errors will be emitted as an error event
         debug_log("PORT INFO: Port closed");
+        serialLog('info', 'Port ' + (data.port || data.ip) + ' closed (native "close" event)');
         var output = {
           'command': 'disconnect',
           'response': "PORT INFO: Port closed",
@@ -2369,19 +2414,113 @@ function stopPort() {
   status.machine.firmware.buffer = "";
   gcodeQueue.length = 0;
   sentBuffer.length = 0; // dump bufferSizes
-  // port.drain(port.close());
+
+  if (typeof port === 'undefined' || !port) {
+    return; // never connected - nothing to close
+  }
 
   if (status.comms.interfaces.type == "usb") {
     if (port.isOpen) {
-      port.drain(port.close());
+      var closingPath = port.path;
+      serialLog('info', 'stopPort: draining then closing ' + closingPath);
+      // Drain BEFORE close (not the other way around) so buffered writes reach
+      // the controller instead of being cut off mid-transmission - closing a
+      // USB-serial port (CH340/FTDI/CP210x) while writes are still in flight
+      // is a likely contributor to the driver leaving the COM port "stuck".
+      port.drain(function(drainErr) {
+        if (drainErr) {
+          serialLog('warn', 'Drain before close reported an error on ' + closingPath + ': ' + drainErr.message);
+        }
+        if (port && port.isOpen) {
+          port.close(function(closeErr) {
+            if (closeErr) {
+              serialLog('error', 'Failed to close ' + closingPath + ': ' + closeErr.message);
+            } else {
+              serialLog('info', 'Closed ' + closingPath);
+            }
+          });
+        }
+      });
+    } else {
+      serialLog('info', 'stopPort: USB port already closed, nothing to do');
     }
   } else if (status.comms.interfaces.type == "telnet") {
     if (port.isOpen) {
+      serialLog('info', 'stopPort: destroying telnet connection');
       port.destroy();
       port.isOpen = false;
     }
   }
 }
+
+// --- Graceful shutdown (P1) --------------------------------------------------
+// Every quit path in this app (Quit tray menu, Cmd+Q, dock Quit, closing the
+// last window, will-quit) used to call electronApp.exit(0) directly, which
+// terminates the process immediately without ever calling port.close(). This
+// is the most likely cause of COM ports being left "stuck": if the serial
+// port was open, its handle was only ever released by raw OS process
+// teardown instead of a clean close() handshake with the USB-serial driver
+// (CH340/FTDI/CP210x/etc). All quit call sites now route through here.
+var isQuitting = false;
+
+function quitAndCleanup(exitCode) {
+  if (isQuitting) return;
+  isQuitting = true;
+  forceQuit = true;
+
+  serialLog('info', 'Quit requested - beginning shutdown cleanup');
+
+  if (appIcon) {
+    try {
+      appIcon.destroy();
+    } catch (e) {}
+  }
+
+  var finished = false;
+
+  function finishQuit() {
+    if (finished) return;
+    finished = true;
+    serialLog('info', 'Shutdown cleanup complete - exiting process');
+    electronApp.exit(exitCode || 0);
+  }
+
+  var portIsOpenUsb = status.comms.interfaces.type == "usb" &&
+    typeof port !== 'undefined' && port && port.isOpen;
+
+  if (portIsOpenUsb) {
+    var closingPath = port.path;
+    serialLog('info', 'Port ' + closingPath + ' is still open at quit - closing before exit');
+
+    // Safety net: never let a wedged driver/board (seen on some grblHAL USB-CDC
+    // implementations) block application exit indefinitely - force exit after
+    // a short timeout if the close callback never fires.
+    var safetyTimer = setTimeout(function() {
+      serialLog('warn', 'Port close on quit did not complete within 1.5s - exiting anyway');
+      finishQuit();
+    }, 1500);
+
+    try {
+      port.close(function(err) {
+        clearTimeout(safetyTimer);
+        if (err) {
+          serialLog('error', 'Error closing port ' + closingPath + ' on quit: ' + err.message);
+        } else {
+          serialLog('info', 'Port ' + closingPath + ' closed cleanly on quit');
+        }
+        finishQuit();
+      });
+    } catch (e) {
+      clearTimeout(safetyTimer);
+      serialLog('error', 'Exception closing port on quit: ' + e.message);
+      finishQuit();
+    }
+  } else {
+    serialLog('info', 'No open USB port at quit time');
+    finishQuit();
+  }
+}
+// --- end graceful shutdown ---------------------------------------------------
 
 function parseFeedback(data) {
   //debug_log(data)
@@ -3033,10 +3172,7 @@ if (isElectron()) {
           label: "Quit",
           accelerator: "Command+Q",
           click: function() {
-            if (appIcon) {
-              appIcon.destroy();
-            }
-            electronApp.exit(0);
+            quitAndCleanup(0);
           }
         }]
       }, {
@@ -3107,10 +3243,7 @@ if (isElectron()) {
         }, {
           label: 'Quit OpenBuilds CONTROL (Disables all integration until started again)',
           click() {
-            if (appIcon) {
-              appIcon.destroy();
-            }
-            electronApp.exit(0);
+            quitAndCleanup(0);
           }
         }])
         if (appIcon) {
@@ -3144,8 +3277,7 @@ if (isElectron()) {
         const dockMenu = Menu.buildFromTemplate([{
           label: 'Quit OpenBuilds CONTROL (Disables all integration until started again)',
           click() {
-            // appIcon.destroy();
-            electronApp.exit(0);
+            quitAndCleanup(0);
           }
         }])
         electronApp.dock.setMenu(dockMenu)
@@ -3215,26 +3347,26 @@ if (isElectron()) {
 
     electronApp.on('before-quit', function() {
       forceQuit = true;
+      serialLog('info', 'before-quit event received');
     })
 
+    // will-quit is a safety net for quit paths we don't originate ourselves
+    // (e.g. OS shutdown/logoff triggering Electron's default app.quit() flow).
+    // quitAndCleanup() is idempotent, so this is harmless if it already ran.
     electronApp.on('will-quit', function(event) {
       // On OS X it is common for applications and their menu bar
       // to stay active until the user quits explicitly with Cmd + Q
       // We don't take that route, we close it completely
-      if (appIcon) {
-        appIcon.destroy();
-      }
-      electronApp.exit(0);
+      quitAndCleanup(0);
     });
 
-    // Quit when all windows are closed.
+    // Quit when all windows are closed. On Windows this is the most common
+    // exit path (closing the jog window fully quits rather than minimizing
+    // to tray), so it's the one most likely to have left a serial port open.
     electronApp.on('window-all-closed', function() {
       // On OS X it is common for applications and their menu bar
       // to stay active until the user quits explicitly with Cmd + Q
-      if (appIcon) {
-        appIcon.destroy();
-      }
-      electronApp.exit(0);
+      quitAndCleanup(0);
     });
 
     electronApp.on('activate', function() {
@@ -3252,6 +3384,17 @@ if (isElectron()) {
         args: []
       })
     }
+
+    // Catch termination signals too (Ctrl+C in a dev console, `npm run-local`,
+    // a service manager stop) so the port still gets a clean close attempt.
+    process.on('SIGINT', function() {
+      serialLog('info', 'SIGINT received');
+      quitAndCleanup(0);
+    });
+    process.on('SIGTERM', function() {
+      serialLog('info', 'SIGTERM received');
+      quitAndCleanup(0);
+    });
   }
 } else { // if its not running under Electron, lets get Chrome up.
   var isPi = require('detect-rpi');
@@ -4027,4 +4170,7 @@ getSystemInfo().catch(err => console.error("Error retrieving system information:
 
 // End system info on startup
 
-process.on('exit', () => debug_log('exit'))
+process.on('exit', (code) => {
+  debug_log('exit')
+  serialLog('info', 'process exit event, code=' + code)
+})
