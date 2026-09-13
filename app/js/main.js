@@ -188,7 +188,13 @@ $(document).ready(function() {
 
   });
 
-  getChangelog()
+  // P5: disabled - this fetched OpenBuilds' own CHANGELOG.txt from GitHub
+  // on every single app startup (independent of the already-disabled
+  // update-check flow), which contradicts "never contacts OpenBuilds".
+  // getChangelog() itself is left intact (also still used by the disabled
+  // update-ready dialog) so it's easy to point at this fork's own
+  // changelog/repo later. Leaves the #changelog panel empty for now.
+  // getChangelog()
 
   setInterval(function() {
     setWindowTitle();

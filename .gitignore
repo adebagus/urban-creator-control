@@ -3,7 +3,9 @@
 #electron dist
 dist
 upload
-electron-builder.yml
+# P5: electron-builder.yml is intentionally NOT ignored (see below) - a
+# gitignored local override file is exactly the kind of thing that can
+# silently make two machines build differently with zero trace in git.
 
 # Compiled source #
 ###################
@@ -49,4 +51,5 @@ node_modules
 # Local settings #
 ##################
 .env
-package-lock.json
+# P5: package-lock.json intentionally NOT ignored - it must stay committed
+# and authoritative for reproducible builds (npm ci) across machines.
