@@ -67,7 +67,11 @@ function debug_log() {
 debug_log("Starting " + APP_DISPLAY_NAME + " v" + require('./package').version)
 
 var config = {};
-config.webPorts = [3000, 3020, 3200, 3220]
+// P3: Urban Creator CONTROL (DEV) uses its own port range so it can run
+// alongside the original OpenBuilds CONTROL (which uses 3000/3020/3200/3220
+// + 3001 for TLS) without either one failing to bind or silently stealing
+// the other's port. Override with WEB_PORT/WEB_PORT_SSL env vars if needed.
+config.webPorts = [4000, 4020, 4200, 4220]
 config.webPortIdx = 0;
 config.nextWebPort = function() {
   config.webPort = config.webPorts[config.webPortIdx]
@@ -78,9 +82,35 @@ config.nextWebPort = function() {
   return config.webPort;
 }
 config.webPort = process.env.WEB_PORT || config.nextWebPort();
+config.webPortSsl = process.env.WEB_PORT_SSL || 4001;
 config.posDecimals = process.env.DRO_DECIMALS || 3;
 config.grblWaitTime = 0.5;
 
+// P3: origin allowlist for the Express HTTP API only (below) - the JSON/
+// upload/gcode-runner endpoints that only this app's own pages (the
+// Electron renderer at localhost/127.0.0.1) should be able to call.
+// Deliberately NOT applied to Socket.IO: the LAN "Jog from Phone" page
+// (app/jog) legitimately connects from whatever LAN IP the machine has that
+// day, which this fixed allowlist can't predict, and Socket.IO's own
+// same-origin default already prevents an unrelated website's JS from using
+// it cross-origin without needing an explicit (and here, unsafe) allowlist.
+//
+// This MUST be computed fresh on every call, not captured into a static
+// array once at module load: config.webPort/webPortSsl are only a first
+// guess at this point in the file - if that port is already taken,
+// httpServerError() below calls config.nextWebPort() and mutates
+// config.webPort asynchronously, well after this point in the script has
+// already run. A static array here would keep pointing at the abandoned
+// first-guess port forever, rejecting every legitimate request from the
+// renderer once it's actually running on the fallback port.
+function getAllowedOrigins() {
+  return [
+    'http://localhost:' + config.webPort,
+    'http://127.0.0.1:' + config.webPort,
+    'https://localhost:' + config.webPortSsl,
+    'https://127.0.0.1:' + config.webPortSsl
+  ];
+}
 
 var express = require("express");
 var app = express();
@@ -111,15 +141,44 @@ var fluidncConfig = "";
 app.use(express.static(path.join(__dirname, "app")));
 //app.use(express.limit('200M'));
 
+// P3: origin allowlist for CORS. This used to reflect "*" (any origin) plus
+// Access-Control-Allow-Private-Network: true, which let an arbitrary website
+// open in the user's browser make cross-origin requests to this server (e.g.
+// POST /runjob to run gcode on the connected machine) just because the
+// server happened to be reachable. Only this app's own pages need to pass
+// CORS here - the LAN "Jog from Phone" page (app/jog) never needs it, since
+// its own requests back to whatever host:port it was loaded from are
+// same-origin and exempt from CORS regardless of this allowlist.
+function isAllowedOrigin(origin) {
+  if (!origin) return false;
+  return getAllowedOrigins().indexOf(origin) !== -1;
+}
+
 app.use(function setCommonHeaders(req, res, next) {
-  res.set("Access-Control-Allow-Private-Network", "true");
+  var origin = req.headers.origin;
+  if (isAllowedOrigin(origin)) {
+    res.header("Access-Control-Allow-Origin", origin);
+    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+    res.header("Access-Control-Allow-Private-Network", "true");
+  }
   next();
 });
 
-app.all('/*', function(req, res, next) {
-  res.header("Access-Control-Allow-Origin", "*");
-  res.header("Access-Control-Allow-Headers", "X-Requested-With");
-  res.header("Access-Control-Allow-Private-Network", "true");
+// P3: an Access-Control-Allow-Origin response header only stops a foreign
+// page's JS from READING the response - it does nothing to stop the request
+// itself from being sent and processed (a plain auto-submitting cross-site
+// <form> to /runjob is not subject to CORS at all, classic CSRF). Browsers
+// do send an Origin header on cross-origin state-changing requests even
+// though CORS doesn't require it, so actively reject those here for routes
+// that change machine/file state - this is what actually stops another
+// website from silently running gcode on the connected machine.
+var stateChangingMethods = ['POST', 'PUT', 'PATCH', 'DELETE'];
+app.use(function rejectCrossOriginStateChanges(req, res, next) {
+  var origin = req.headers.origin;
+  if (stateChangingMethods.indexOf(req.method) !== -1 && origin && !isAllowedOrigin(origin)) {
+    serialLog('warn', 'Rejected ' + req.method + ' ' + req.path + ' from disallowed origin: ' + origin);
+    return res.status(403).send('Forbidden: origin not allowed');
+  }
   next();
 });
 
@@ -158,14 +217,20 @@ var httpsOptions = {
   cert: fs.readFileSync(path.join(__dirname, 'fullchain1.pem'))
 };
 
-const httpsserver = https.createServer(httpsOptions, app).listen(3001, function() {
-  debug_log('https: listening on:' + ip.address() + ":3001");
+const httpsserver = https.createServer(httpsOptions, app).listen(config.webPortSsl, function() {
+  debug_log('https: listening on:' + ip.address() + ":" + config.webPortSsl);
 });
 
 const httpserver = http.listen(config.webPort, '0.0.0.0', httpServerSuccess).on('error', httpServerError);
 
 function httpServerSuccess() {
   debug_log('http:  listening on:' + ip.address() + ":" + config.webPort);
+  // status.driver.webPort was set once from config.webPort when the status
+  // object literal was constructed, before any fallback-port retry below
+  // could run - refresh it here now that we know the port we actually bound
+  // to, so LAN-facing pages (Jog from Phone widget) never advertise a stale,
+  // abandoned port number.
+  status.driver.webPort = config.webPort;
   if (jogWindow) {
     jogWindow.loadURL(`http://localhost:${config.webPort}/`);
   }
@@ -467,6 +532,7 @@ var status = {
   driver: {
     version: require('./package').version,
     ipaddress: ip.address(),
+    webPort: config.webPort, // P3: exposed so LAN-facing pages (Jog from Phone widget) don't hardcode the port
     operatingsystem: false,
     powersettings: {
       usbselectiveAC: null,
@@ -603,8 +669,6 @@ checkPowerSettings()
 
 // JSON API
 app.get('/api/version', (req, res) => {
-  res.header("Access-Control-Allow-Origin", "*");
-  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
   data = {
     "application": "OMD",
     "version": require('./package').version,
@@ -615,8 +679,6 @@ app.get('/api/version', (req, res) => {
 
 app.get('/activate', (req, res) => {
   debug_log(req.hostname)
-  res.header("Access-Control-Allow-Origin", "*");
-  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
   res.send('Host: ' + req.hostname + ' asked to activate OpenBuilds CONTROL v' + require('./package').version);
   showJogWindow()
   setTimeout(function() {
@@ -626,22 +688,16 @@ app.get('/activate', (req, res) => {
 
 // Upload
 app.get('/upload', (req, res) => {
-  res.header("Access-Control-Allow-Origin", "*");
-  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
   res.sendFile(__dirname + '/app/upload.html');
 })
 
 app.get('/gcode', (req, res) => {
   if (uploadedgcode.indexOf('$') != 0) { // Ignore grblSettings jobs
-    res.header("Access-Control-Allow-Origin", "*");
-    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
     res.send(uploadedgcode);
   }
 })
 
 app.get('/workspace', (req, res) => {
-  res.header("Access-Control-Allow-Origin", "*");
-  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
   res.send(uploadedworkspace);
 })
 
@@ -681,8 +737,6 @@ app.post('/runjob', (req, res) => {
 
 // File Post
 app.post('/upload', function(req, res) {
-  res.header("Access-Control-Allow-Origin", "*");
-  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
   //debug_log(req)
   uploadprogress = 0
   var form = new formidable.IncomingForm();
@@ -2511,6 +2565,60 @@ function killActiveChildProcesses() {
   activeChildProcesses = [];
 }
 
+// P3: close the local HTTP/HTTPS/Socket.IO backend on quit too. TCP listen
+// sockets don't get "stuck" like a COM port does (the OS always reclaims them
+// on process exit, even a hard crash) - this is here for consistency with the
+// P1/P2 cleanup pattern and so a lingering long-poll/websocket connection
+// can't keep anything open past when we intend to exit. Bounded by the same
+// kind of safety timeout as the serial port close, for the same reason.
+function closeBackendServers(callback) {
+  var done = false;
+
+  function finish(reason) {
+    if (done) return;
+    done = true;
+    serialLog('info', 'Backend servers closed (' + reason + ')');
+    callback();
+  }
+
+  serialLog('info', 'Closing local HTTP/HTTPS/Socket.IO servers');
+
+  try {
+    io.close();
+  } catch (e) {
+    serialLog('warn', 'io.close() error on quit: ' + e.message);
+  }
+
+  var pending = 0;
+  var safetyTimer = setTimeout(function() {
+    finish('timeout after 1s - continuing quit anyway');
+  }, 1000);
+
+  function onServerClosed() {
+    pending--;
+    if (pending <= 0) {
+      clearTimeout(safetyTimer);
+      finish('all closed');
+    }
+  }
+
+  [httpserver, httpsserver].forEach(function(server) {
+    if (!server) return;
+    pending++;
+    try {
+      server.close(onServerClosed);
+    } catch (e) {
+      serialLog('warn', 'Error closing a backend server on quit: ' + e.message);
+      onServerClosed();
+    }
+  });
+
+  if (pending === 0) {
+    clearTimeout(safetyTimer);
+    finish('nothing to close');
+  }
+}
+
 function quitAndCleanup(exitCode) {
   if (isQuitting) return;
   isQuitting = true;
@@ -2526,13 +2634,18 @@ function quitAndCleanup(exitCode) {
 
   killActiveChildProcesses();
 
-  var finished = false;
+  // Exit only once every cleanup task below (serial port + backend servers)
+  // has either finished or hit its own safety timeout.
+  var pendingTasks = 2;
+  var exited = false;
 
-  function finishQuit() {
-    if (finished) return;
-    finished = true;
-    serialLog('info', 'Shutdown cleanup complete - exiting process');
-    electronApp.exit(exitCode || 0);
+  function taskDone() {
+    pendingTasks--;
+    if (pendingTasks <= 0 && !exited) {
+      exited = true;
+      serialLog('info', 'Shutdown cleanup complete - exiting process');
+      electronApp.exit(exitCode || 0);
+    }
   }
 
   var portIsOpenUsb = status.comms.interfaces.type == "usb" &&
@@ -2547,7 +2660,7 @@ function quitAndCleanup(exitCode) {
     // a short timeout if the close callback never fires.
     var safetyTimer = setTimeout(function() {
       serialLog('warn', 'Port close on quit did not complete within 1.5s - exiting anyway');
-      finishQuit();
+      taskDone();
     }, 1500);
 
     try {
@@ -2558,17 +2671,19 @@ function quitAndCleanup(exitCode) {
         } else {
           serialLog('info', 'Port ' + closingPath + ' closed cleanly on quit');
         }
-        finishQuit();
+        taskDone();
       });
     } catch (e) {
       clearTimeout(safetyTimer);
       serialLog('error', 'Exception closing port on quit: ' + e.message);
-      finishQuit();
+      taskDone();
     }
   } else {
     serialLog('info', 'No open USB port at quit time');
-    finishQuit();
+    taskDone();
   }
+
+  closeBackendServers(taskDone);
 }
 // --- end graceful shutdown ---------------------------------------------------
 
