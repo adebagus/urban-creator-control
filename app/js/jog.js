@@ -8,6 +8,77 @@ var jogRateY = 4000
 var jogRateZ = 2000
 var jogRateA = 2000
 
+// P7: single row of 5 mutually-exclusive choices (0.1/1/10/100/CONT) replacing
+// the old separate Incremental/Continuous toggle + 4 distance buttons.
+// jogDistanceButtonValues maps each button's id to the value selectJogDistance()
+// expects - kept id-based (no HTML data-attributes) to match this file's
+// existing convention of hooking behaviour off element ids.
+var jogDistanceButtonValues = {
+  'dist01': '0.1',
+  'dist1': '1',
+  'dist10': '10',
+  'dist100': '100',
+  'distCONT': 'CONT'
+};
+
+function highlightJogDistanceButton(id) {
+  // P7 styling: orange (fg-orange/bd-orange, #fa6800) instead of the old
+  // fg-openbuilds/bd-openbuilds - that class currently resolves to black in
+  // this fork (see app/css/main.css), not the OpenBuilds orange its name
+  // suggests. #fa6800 is the same orange already used for the A-axis jog
+  // buttons and the new diagonal buttons, kept consistent here too.
+  $('.distbtn').removeClass('bd-orange');
+  $('.jogdistXYZ').removeClass('fg-orange').addClass('fg-gray');
+  $('#distCONTlabel').removeClass('fg-orange').addClass('fg-gray');
+  $('#' + id).addClass('bd-orange');
+  $('#' + id + 'label').removeClass('fg-gray').addClass('fg-orange');
+}
+
+// Maps the CURRENT jogdistXYZ number (mm or inch) back to the button id that
+// represents it, so callers that only know "go back to incremental" (not
+// which specific distance) can re-highlight the right button.
+function jogDistanceButtonIdFor(jogdist) {
+  var v = parseFloat(jogdist);
+  if (v == 0.1 || v == 0.0254) return 'dist01';
+  if (v == 1 || v == 0.254) return 'dist1';
+  if (v == 10 || v == 2.54) return 'dist10';
+  if (v == 100 || v == 25.4) return 'dist100';
+  return 'dist10'; // fallback - matches the static HTML's default-highlighted button
+}
+
+// value: '0.1' | '1' | '10' | '100' (always expressed as if unit=="mm") | 'CONT'
+function selectJogDistance(value) {
+  if (value == 'CONT') {
+    localStorage.setItem('continuousJog', true);
+    allowContinuousJog = true;
+    highlightJogDistanceButton('distCONT');
+    return;
+  }
+  localStorage.setItem('continuousJog', false);
+  allowContinuousJog = false;
+  var mmToInch = {
+    '0.1': 0.0254,
+    '1': 0.254,
+    '10': 2.54,
+    '100': 25.4
+  };
+  jogdistXYZ = (unit == "in") ? mmToInch[value] : parseFloat(value);
+  highlightJogDistanceButton(jogDistanceButtonIdFor(value));
+}
+
+// Switch to Incremental without changing which distance was last selected -
+// used where the caller only knows "leave continuous mode" (keyboard step
+// keys, the probe wizard's post-probe restore), not a specific distance.
+function setIncrementalMode() {
+  localStorage.setItem('continuousJog', false);
+  allowContinuousJog = false;
+  highlightJogDistanceButton(jogDistanceButtonIdFor(jogdistXYZ));
+}
+
+function setContinuousMode() {
+  selectJogDistance('CONT');
+}
+
 function jogOverride(newVal) {
   if (grblParams.hasOwnProperty('$110')) {
     jogRateX = (grblParams['$110'] * (newVal / 100)).toFixed(0);
@@ -113,29 +184,19 @@ function cancelJog() {
 
 $(document).ready(function() {
 
+  // P7: restore last-used mode (Incremental at its last distance, or
+  // Continuous) - if nothing was ever saved, leave the static HTML default
+  // (10mm, already marked bd-orange in the markup) alone.
   if (localStorage.getItem('continuousJog')) {
     if (JSON.parse(localStorage.getItem('continuousJog')) == true) {
-      $('#jogTypeContinuous').prop('checked', true)
-      allowContinuousJog = true;
-      $('.distbtn').hide()
+      setContinuousMode();
     } else {
-      $('#jogTypeContinuous').prop('checked', false)
-      allowContinuousJog = false;
-      $('.distbtn').show();
+      setIncrementalMode();
     }
   }
 
-  $('#jogTypeContinuous').on('click', function() {
-    if ($(this).is(':checked')) {
-      localStorage.setItem('continuousJog', true);
-      allowContinuousJog = true;
-      $('.distbtn').hide();
-    } else {
-      localStorage.setItem('continuousJog', false);
-      allowContinuousJog = false;
-      $('.distbtn').show();
-    }
-    // console.log(document.activeElement)
+  $('#dist01, #dist1, #dist10, #dist100, #distCONT').on('click', function(ev) {
+    selectJogDistance(jogDistanceButtonValues[this.id]);
     document.activeElement.blur();
   });
 
@@ -327,62 +388,6 @@ $(document).ready(function() {
 
   // End A-Axis DRO Entry
 
-
-  $('#dist01').on('click', function(ev) {
-    if (unit == "mm") {
-      jogdistXYZ = 0.1;
-    } else if (unit == "in") {
-      jogdistXYZ = 0.0254;
-    }
-    $('.distbtn').removeClass('bd-openbuilds')
-    $('#dist01').addClass('bd-openbuilds')
-    $('.jogdistXYZ').removeClass('fg-openbuilds')
-    $('.jogdistXYZ').addClass('fg-gray')
-    $('#dist01label').removeClass('fg-gray')
-    $('#dist01label').addClass('fg-openbuilds')
-  })
-
-  $('#dist1').on('click', function(ev) {
-    if (unit == "mm") {
-      jogdistXYZ = 1;
-    } else if (unit == "in") {
-      jogdistXYZ = 0.254;
-    }
-    $('.distbtn').removeClass('bd-openbuilds')
-    $('#dist1').addClass('bd-openbuilds')
-    $('.jogdistXYZ').removeClass('fg-openbuilds')
-    $('.jogdistXYZ').addClass('fg-gray')
-    $('#dist1label').removeClass('fg-gray')
-    $('#dist1label').addClass('fg-openbuilds')
-  })
-
-  $('#dist10').on('click', function(ev) {
-    if (unit == "mm") {
-      jogdistXYZ = 10;
-    } else if (unit == "in") {
-      jogdistXYZ = 2.54;
-    }
-    $('.distbtn').removeClass('bd-openbuilds')
-    $('#dist10').addClass('bd-openbuilds')
-    $('.jogdistXYZ').removeClass('fg-openbuilds')
-    $('.jogdistXYZ').addClass('fg-gray')
-    $('#dist10label').removeClass('fg-gray')
-    $('#dist10label').addClass('fg-openbuilds')
-  })
-
-  $('#dist100').on('click', function(ev) {
-    if (unit == "mm") {
-      jogdistXYZ = 100;
-    } else if (unit == "in") {
-      jogdistXYZ = 25.4;
-    }
-    $('.distbtn').removeClass('bd-openbuilds')
-    $('#dist100').addClass('bd-openbuilds')
-    $('.jogdistXYZ').removeClass('fg-openbuilds')
-    $('.jogdistXYZ').addClass('fg-gray')
-    $('#dist100label').removeClass('fg-gray')
-    $('#dist100label').addClass('fg-openbuilds')
-  })
 
   $('#gotozeroWPos').on('click', function(ev) {
     sendGcode('G21 G90');
@@ -739,6 +744,15 @@ $(document).ready(function() {
     }
   });
 
+  // P7: 4 diagonal (X+Y combined) jog buttons, same mousedown/mouseup pattern
+  // as the single-axis buttons above, using the existing jogXY()/'jogXY'
+  // socket event (index.js already builds "$J=G91G21X<x> Y<y> F<feed>" from
+  // it - it just had no button wired up to it before now).
+  bindDiagonalJog('.xPyP', 1, 1); // NE: X+, Y+
+  bindDiagonalJog('.xMyP', -1, 1); // NW: X-, Y+
+  bindDiagonalJog('.xPyM', 1, -1); // SE: X+, Y-
+  bindDiagonalJog('.xMyM', -1, -1); // SW: X-, Y-
+
   $('.aM').on('touchstart mousedown', function(ev) {
     if (ev.which > 1) { // Ignore middle and right click
       return
@@ -844,6 +858,14 @@ $(document).ready(function() {
     home();
   })
 
+  // P7: Stop Jog button, center of the 3x3 diagonal grid - cancels the
+  // current jog move (GRBL/grblHAL real-time jog-cancel, 0x85, via the
+  // existing cancelJog()) without a full E-Stop/reset. Works regardless of
+  // Incremental/Continuous mode.
+  $('#stopJog').on('click', function(ev) {
+    cancelJog();
+  })
+
   $('#chkSize').on('click', function() {
     var bbox2 = new THREE.Box3().setFromObject(object);
     console.log('bbox for Draw Bounding Box: ' + object + ' Min X: ', (bbox2.min.x), '  Max X:', (bbox2.max.x), 'Min Y: ', (bbox2.min.y), '  Max Y:', (bbox2.max.y));
@@ -875,98 +897,18 @@ $(document).ready(function() {
 
 });
 
+// P7: step the Incremental distance up/down (keyboard step+/step- shortcuts).
+// Always forces Incremental mode - if CONT was active, jogdistXYZ still
+// holds whatever numeric distance was last selected (selectJogDistance('CONT')
+// never touches it), so stepping from CONT resumes from that value.
 function changeStepSize(dir) {
   $('.distbtn').blur();
-  if (jogdistXYZ == 0.1 || jogdistXYZ == 0.0254) {
-    if (dir == 1) {
-      if (unit == "mm") {
-        jogdistXYZ = 1;
-      } else if (unit == "in") {
-        jogdistXYZ = .254;
-      }
-      $('.distbtn').removeClass('bd-openbuilds')
-      $('#dist1').addClass('bd-openbuilds')
-      $('.jogdistXYZ').removeClass('fg-openbuilds')
-      $('.jogdistXYZ').addClass('fg-gray')
-      $('#dist1label').removeClass('fg-gray')
-      $('#dist1label').addClass('fg-dark')
-    }
-    if (dir == -1) {
-      // do nothing
-    }
-  } else if (jogdistXYZ == 1 || jogdistXYZ == 0.254) {
-    if (dir == 1) {
-      if (unit == "mm") {
-        jogdistXYZ = 10;
-      } else if (unit == "in") {
-        jogdistXYZ = 2.54;
-      }
-      $('.distbtn').removeClass('bd-openbuilds')
-      $('#dist10').addClass('bd-openbuilds')
-      $('.jogdistXYZ').removeClass('fg-openbuilds')
-      $('.jogdistXYZ').addClass('fg-gray')
-      $('#dist10label').removeClass('fg-gray')
-      $('#dist10label').addClass('fg-openbuilds')
-    }
-    if (dir == -1) {
-      if (unit == "mm") {
-        jogdistXYZ = 0.1;
-      } else if (unit == "in") {
-        jogdistXYZ = 0.0254;
-      }
-      $('.distbtn').removeClass('bd-openbuilds')
-      $('#dist01').addClass('bd-openbuilds')
-      $('.jogdistXYZ').removeClass('fg-openbuilds')
-      $('.jogdistXYZ').addClass('fg-gray')
-      $('#dist01label').removeClass('fg-gray')
-      $('#dist01label').addClass('fg-openbuilds')
-    }
-  } else if (jogdistXYZ == 10 || jogdistXYZ == 2.54) {
-    if (dir == 1) {
-      if (unit == "mm") {
-        jogdistXYZ = 100;
-      } else if (unit == "in") {
-        jogdistXYZ = 25.4;
-      }
-      $('.distbtn').removeClass('bd-openbuilds')
-      $('#dist100').addClass('bd-openbuilds')
-      $('.jogdistXYZ').removeClass('fg-openbuilds')
-      $('.jogdistXYZ').addClass('fg-gray')
-      $('#dist100label').removeClass('fg-gray')
-      $('#dist100label').addClass('fg-openbuilds')
-    }
-    if (dir == -1) {
-      if (unit == "mm") {
-        jogdistXYZ = 1;
-      } else if (unit == "in") {
-        jogdistXYZ = 0.254;
-      }
-      $('.distbtn').removeClass('bd-openbuilds')
-      $('#dist1').addClass('bd-openbuilds')
-      $('.jogdistXYZ').removeClass('fg-openbuilds')
-      $('.jogdistXYZ').addClass('fg-gray')
-      $('#dist1label').removeClass('fg-gray')
-      $('#dist1label').addClass('fg-openbuilds')
-    }
-  } else if (jogdistXYZ == 100 || jogdistXYZ == 25.4) {
-    if (dir == 1) {
-      // do nothing
-    }
-    if (dir == -1) {
-      if (unit == "mm") {
-        jogdistXYZ = 10;
-      } else if (unit == "in") {
-        jogdistXYZ = 2.54;
-      }
-      $('.distbtn').removeClass('bd-openbuilds')
-      $('#dist10').addClass('bd-openbuilds')
-      $('.jogdistXYZ').removeClass('fg-openbuilds')
-      $('.jogdistXYZ').addClass('fg-gray')
-      $('#dist10label').removeClass('fg-gray')
-      $('#dist10label').addClass('fg-openbuilds')
-    }
-  }
-
+  var steps = ['0.1', '1', '10', '100'];
+  var currentId = jogDistanceButtonIdFor(jogdistXYZ);
+  var idx = ['dist01', 'dist1', 'dist10', 'dist100'].indexOf(currentId);
+  if (idx == -1) idx = 2; // shouldn't happen - fall back to 10mm
+  idx = Math.min(steps.length - 1, Math.max(0, idx + dir));
+  selectJogDistance(steps[idx]);
 }
 
 function jog(dir, dist, feed = null) {
@@ -984,6 +926,86 @@ function jogXY(xincrement, yincrement, feed = null) {
     feed: feed
   }
   socket.emit('jogXY', data);
+}
+
+// P7: continuous-jog distance for one axis and direction, mirroring the
+// per-axis soft-limit clamping already used individually by the .xM/.xP/
+// .yM/.yP/.zM/.zP handlers above (same formula, just parametrized so the
+// 4 diagonal buttons don't need to duplicate it twice each). Returns a
+// positive magnitude; callers combine it with their own sign. A value below
+// 1 means "would immediately hit the soft limit", matching the existing
+// `if (distance < 1)` guard used everywhere else in this file.
+function calcContinuousJogDistance(axisLetter, sign) {
+  var hasSoftLimits = false;
+  if (Object.keys(grblParams).length > 0) {
+    if (parseInt(grblParams.$20) == 1) {
+      hasSoftLimits = true;
+    }
+  }
+  if (!hasSoftLimits) {
+    return 1000;
+  }
+  var maxTravelKey = {
+    X: '$130',
+    Y: '$131',
+    Z: '$132'
+  }[axisLetter];
+  var posKey = {
+    X: 'x',
+    Y: 'y',
+    Z: 'z'
+  }[axisLetter];
+  var maxTravel = parseInt(grblParams[maxTravelKey]);
+  var currentPos = parseFloat(laststatus.machine.position.offset[posKey]) + parseFloat(laststatus.machine.position.work[posKey]);
+  if (sign > 0) {
+    return (0 - currentPos - 1);
+  } else {
+    return (maxTravel + currentPos - 1);
+  }
+}
+
+// P7: binds mousedown/mouseup for one diagonal jog button, following the
+// exact same Continuous-vs-Incremental branching as the single-axis
+// handlers above, just moving X and Y together in one $J= command via
+// jogXY()/'jogXY' instead of one axis via jog()/'jog'.
+function bindDiagonalJog(selector, xSign, ySign) {
+  $(selector).on('touchstart mousedown', function(ev) {
+    if (ev.which > 1) {
+      return
+    }
+    ev.preventDefault();
+    if (allowContinuousJog) {
+      if (!waitingForStatus && laststatus.comms.runStatus == "Idle" || laststatus.comms.runStatus == "Door:0") {
+        var xDist = calcContinuousJogDistance('X', xSign);
+        var yDist = calcContinuousJogDistance('Y', ySign);
+        if (xDist < 1 || yDist < 1) {
+          toastJogWillHit((xSign > 0 ? "X+" : "X-") + "/" + (ySign > 0 ? "Y+" : "Y-"));
+        } else {
+          var feed = Math.min(jogRateX, jogRateY);
+          socket.emit('jogXY', {
+            x: (xSign * xDist).toFixed(3),
+            y: (ySign * yDist).toFixed(3),
+            feed: feed
+          });
+          continuousJogRunning = true;
+          waitingForStatus = true;
+          $(selector).click();
+        }
+      } else {
+        toastJogNotIdle();
+      }
+    } else {
+      jogXY(xSign * jogdistXYZ, ySign * jogdistXYZ, Math.min(jogRateX, jogRateY));
+    }
+    $('#runNewProbeBtn').addClass("disabled")
+    $('#confirmNewProbeBtn').removeClass("disabled")
+  });
+  $(selector).on('touchend mouseup', function(ev) {
+    ev.preventDefault();
+    if (allowContinuousJog) {
+      cancelJog()
+    }
+  });
 }
 
 function home() {

@@ -29,8 +29,17 @@ body {
 }
 
 #jogcontrols {
-  /* Note only uses height attribs from here, before we connect to websocket. After that, it gets set by websocket.js */
-  height: 240px;
+  /* P7 bugfix: this was a fixed `height: 240px` - the comment claims
+     websocket.js recalculates it after connecting, but no such code exists
+     anywhere in the app (verified). It was a hard ceiling all along, just
+     one the old 2-row jog table + separate toggle row happened to fit
+     under. The new 3-row 3x3 grid + merged distance/CONT row need more
+     than 240px, so content overflowed past this box and got visually
+     buried under #controlLogs (the tab bar), which starts immediately
+     after in normal document flow - explains both the missing buttons and
+     the un-clickable ones (the tab section was sitting on top, even where
+     transparent). min-height keeps the old baseline size but lets it grow. */
+  min-height: 240px;
 }
 
 #macros {

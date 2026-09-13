@@ -639,6 +639,13 @@ var grblSettingsTemplate2 = {
     template: `<input id="val-345-input" data-role="input" data-clear-button="false" data-append="mm/min" type="text" >`,
     utils: ``
   },
+  347: {
+    key: `$347`,
+    title: `Tool Change Bit-Swap Pause X Offset`,
+    description: `UC-100 (FIXED31): used when $341=3 (bit-swap pause). X offset from toolsetter, mm (+right/-left, 0=over toolsetter).`,
+    template: `<input id="val-347-input" data-role="input" data-clear-button="false" data-append="mm" type="text" >`,
+    utils: ``
+  },
   370: {
     key: `$370`,
     title: `Invert I/O Port Inputs (mask)`,

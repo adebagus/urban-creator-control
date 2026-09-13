@@ -251,54 +251,14 @@ function grblPopulate() {
             <ul class="image-checkbox-ul">
               <li>
                 <input type="checkbox" name="hardlimits" id="hardlimitsenabled" value="hardlimits">
-                <label for="hardlimitsenabled"><img src="./img/toolhead/xtensionslimit.png" /></label>
+                <label for="hardlimitsenabled"><i class="fas fa-shield-alt"></i></label>
                 <div class="image-checkbox-text">Hard Limits ($21)</div>
               </li>
               <li>
                 <input type="checkbox" name="homing" id="homingenabled" value="homing">
-                <label for="homingenabled"><img src="./img/toolhead/xtensionslimit.png" /></label>
+                <label for="homingenabled"><i class="fas fa-home"></i></label>
                 <div class="image-checkbox-text">Homing ($22)</div>
               </li>
-            </ul>
-          </li>
-          <li>
-            <h6>Add-Ons Installed<br><small>Telling us what kind of attachments the
-                machine has, allows us to pre-configure your Grbl Settings to match</small></h6>
-            <ul class="image-checkbox-ul">
-              <!-- Radio Group -->
-              <li>
-                <input type="radio" name="toolhead" id="toolhead_router11"
-                  value="router11">
-                <label for="toolhead_router11"><img
-                    src="./img/toolhead/router11.png" /></label>
-                <div class="image-checkbox-text">RoutER11 with IoT Relay</div>
-              </li>
-              <li>
-                <input type="radio" name="toolhead" id="toolhead_plasma"
-                  value="plasma">
-                <label for="toolhead_plasma"><img
-                    src="./img/toolhead/leadplasma.png" /></label>
-                <div class="image-checkbox-text">LEAD 1010 Plasma Add-On</div>
-              </li>
-              <li>
-                <input type="radio" name="toolhead" id="toolhead_laser"
-                  value="laser">
-                <label for="toolhead_laser"><img src="./img/toolhead/laser.png" /></label>
-                <div class="image-checkbox-text">Laser Diode Module</div>
-              </li>
-              <li>
-                <input type="radio" name="toolhead" id="toolhead_scribe"
-                  value="scribe">
-                <label for="toolhead_scribe"><img src="./img/toolhead/plotter.png" /></label>
-                <div class="image-checkbox-text">SCRIBE<br>Pen Lifter</div>
-              </li>
-              <li>
-                <input type="radio" name="toolhead" id="toolhead_vfd_spindle"
-                  value="vfd_spindle">
-                <label for="toolhead_vfd_spindle"><img src="./img/toolhead/vfd.png" /></label>
-                <div class="image-checkbox-text">Variable Speed Spindle</div>
-              </li>
-              <!-- End Radio Group -->
             </ul>
           </li>
 
@@ -398,22 +358,6 @@ function grblPopulate() {
     // Laser profile), it never writes anything back to the firmware itself.
     $('#simpleprofile_laser').prop('checked', parseFloat(grblParams['$32']) == 1);
     $('#simpleprofile_router').prop('checked', parseFloat(grblParams['$32']) != 1);
-
-    // if (grblParams['$33'] == 50 && grblParams['$34'] == 5 && grblParams['$35'] == 5 && grblParams['$36'] == 10) {
-    //   setSelectedToolhead('scribe')
-    // }
-
-    if (isMatchingConfig(grblParams, grblParams_scribe)) {
-      setSelectedToolhead('scribe')
-    } else if (isMatchingConfig(grblParams, grblParams_plasma)) {
-      setSelectedToolhead('plasma')
-    } else if (isMatchingConfig(grblParams, grblParams_router)) {
-      setSelectedToolhead('router11')
-    } else if (isMatchingConfig(grblParams, grblParams_laser)) {
-      setSelectedToolhead('laser')
-    } else if (isMatchingConfig(grblParams, grblParams_vfd)) {
-      setSelectedToolhead('vfd_spindle')
-    }
 
     setTimeout(function() {
       setMachineButton(laststatus.machine.name)
@@ -838,27 +782,6 @@ function setup_settings_table() {
     toggleHoming();
   });
 
-  // $('#scribeinstalled:checkbox').change(function() {
-  //   enableScribe();
-  // });
-
-  // Handle the change event for radio buttons
-  $('input[name="toolhead"]').on('change', function() {
-    console.log(`Selected toolhead: ${$(this).val()}`);
-    var selectedToolhead = $(this).val();
-    if (selectedToolhead == 'router11') {
-      enableRouter();
-    } else if (selectedToolhead == 'scribe') {
-      enableScribe();
-    } else if (selectedToolhead == 'laser') {
-      enableLaser();
-    } else if (selectedToolhead == 'plasma') {
-      enablePlasma();
-    } else if (selectedToolhead == 'vfd_spindle') {
-      enableVFD();
-    }
-  });
-
   $('#xdirinvert:checkbox').change(function() {
     changeDirInvert();
   });
@@ -915,174 +838,4 @@ function toggleHoming() {
 function syncHardLimitAndHomingCheckboxes() {
   $('#hardlimitsenabled:checkbox').prop('checked', parseFloat($("#val-21-input").val()) == 1);
   $('#homingenabled:checkbox').prop('checked', parseFloat($("#val-22-input").val()) > 0);
-}
-
-var grblParams_scribe = {
-  $32: "0", //PWM Freq for RC Servo
-  $33: "50", //PWM Freq for RC Servo
-  $34: "5", //Spindle Off Value for RC Servo
-  $35: "5", //Spinde Min Value for RC Servo
-  $36: "10", //Spindle max Value for RC Servo
-}
-
-function enableScribe() {
-  for (var key in grblParams_scribe) {
-    if (grblParams_scribe.hasOwnProperty(key)) {
-      var j = key.substring(1)
-      var newVal = $("#val-" + j + "-input").val();
-      // console.log("$" + j + " = " + newVal)
-      $("#val-" + j + "-input").val(parseFloat(grblParams_scribe[key]))
-    }
-  }
-  allowGrblSettingsViewScroll = false;
-  setTimeout(function() {
-    allowGrblSettingsViewScroll = true;
-  }, 500);
-  checkifchanged();
-  var elm = document.getElementById("grblSettingsPWM");
-  // elm.scrollIntoView(true);
-}
-
-var grblParams_laser = {
-  $30: "1000", // S Max
-  $32: "1", // Laser Mode On
-  $33: "1000", //PWM Freq
-  $34: "0", //Spindle Off Value
-  $35: "0", //Spinde Min Value
-  $36: "100", //Spindle max Value
-}
-
-function enableLaser() {
-
-  for (var key in grblParams_laser) {
-    if (grblParams_laser.hasOwnProperty(key)) {
-      var j = key.substring(1)
-      var newVal = $("#val-" + j + "-input").val();
-      // console.log("$" + j + " = " + newVal)
-      $("#val-" + j + "-input").val(parseFloat(grblParams_laser[key]))
-    }
-  }
-  allowGrblSettingsViewScroll = false;
-  setTimeout(function() {
-    allowGrblSettingsViewScroll = true;
-  }, 500);
-  checkifchanged();
-  var elm = document.getElementById("grblSettingsPWM");
-  // elm.scrollIntoView(true);
-}
-
-var grblParams_router = {
-  $30: "1000", // S Max
-  $32: "0", // Laser Mode On
-  $33: "5000", //PWM Freq
-  $34: "0", //Spindle Off Value
-  $35: "0", //Spinde Min Value
-  $36: "100", //Spindle max Value
-}
-
-function enableRouter() {
-
-  for (var key in grblParams_router) {
-    if (grblParams_router.hasOwnProperty(key)) {
-      var j = key.substring(1)
-      var newVal = $("#val-" + j + "-input").val();
-      // console.log("$" + j + " = " + newVal)
-      $("#val-" + j + "-input").val(parseFloat(grblParams_router[key]))
-    }
-  }
-  allowGrblSettingsViewScroll = false;
-  setTimeout(function() {
-    allowGrblSettingsViewScroll = true;
-  }, 500);
-  checkifchanged();
-  var elm = document.getElementById("grblSettingsPWM");
-  // elm.scrollIntoView(true);
-}
-
-var grblParams_plasma = {
-  $30: "1000", // S Max
-  $32: "0", // Laser Mode On
-  $33: "1000", //PWM Freq
-  $34: "0", //Spindle Off Value
-  $35: "0", //Spinde Min Value
-  $36: "100", //Spindle max Value
-}
-
-function enablePlasma() {
-
-  for (var key in grblParams_plasma) {
-    if (grblParams_plasma.hasOwnProperty(key)) {
-      var j = key.substring(1)
-      var newVal = $("#val-" + j + "-input").val();
-      // console.log("$" + j + " = " + newVal)
-      $("#val-" + j + "-input").val(parseFloat(grblParams_plasma[key]))
-    }
-  }
-  allowGrblSettingsViewScroll = false;
-  setTimeout(function() {
-    allowGrblSettingsViewScroll = true;
-  }, 500);
-  checkifchanged();
-  var elm = document.getElementById("grblSettingsPWM");
-  // elm.scrollIntoView(true);
-}
-
-var grblParams_vfd = {
-  $30: "24000", // S Max
-  $32: "0", // Laser Mode On
-  $33: "1000", //PWM Freq
-  $34: "0", //Spindle Off Value
-  $35: "0", //Spinde Min Value
-  $36: "100", //Spindle max Value
-}
-
-function enableVFD() {
-
-  for (var key in grblParams_vfd) {
-    if (grblParams_vfd.hasOwnProperty(key)) {
-      var j = key.substring(1)
-      var newVal = $("#val-" + j + "-input").val();
-      // console.log("$" + j + " = " + newVal)
-      $("#val-" + j + "-input").val(parseFloat(grblParams_vfd[key]))
-    }
-  }
-  allowGrblSettingsViewScroll = false;
-  setTimeout(function() {
-    allowGrblSettingsViewScroll = true;
-  }, 500);
-  checkifchanged();
-  var elm = document.getElementById("grblSettingsPWM");
-  // elm.scrollIntoView(true);
-}
-
-function isMatchingConfig(currentParams, predefinedParams) {
-  for (let key in predefinedParams) {
-    // Compare values as numbers to handle type mismatches
-    if (parseFloat(currentParams[key]) !== parseFloat(predefinedParams[key])) {
-      return false;
-    }
-  }
-  return true;
-}
-
-
-// Function to programmatically set the selected radio
-function setSelectedToolhead(value) {
-  const $radio = $(`input[name="toolhead"][value="${value}"]`);
-  if ($radio.length) {
-    $radio.prop('checked', true).trigger('change'); // Trigger the change event
-  } else {
-    console.error('Toolhead not found:', value);
-  }
-
-  if (value == "scribe") {
-    // Set Default Pen Up/Down values
-    penupval = 250
-    pendownval = 0
-    servo = {
-      up: penupval,
-      down: pendownval
-    }
-    localStorage.setItem("servo-calibration", JSON.stringify(servo));
-  }
 }

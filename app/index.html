@@ -892,6 +892,17 @@
                         </div>
                       </td>
                     </tr>
+
+                    <tr>
+                      <td colspan="3" class="border-top bd-gray pt-4" style="text-align: center;">
+                        <button class="button light jogbtn mr-2" onclick="sendGcode('$TLS')" style="width: 70px;" data-role="ripple" data-ripple-color="#fa6800" title="Set Toolsetter ($TLS): jog to your toolsetter first, then click - firmware captures the current X/Y/Z as the toolsetter reference for automatic tool change.">
+                          <span class="fas fa-fw fa-bullseye icon fg-orange"></span>TLS
+                        </button>
+                        <button class="button light jogbtn" onclick="sendGcode('$TCZ')" style="width: 70px;" data-role="ripple" data-ripple-color="#fa6800" title="Set Safe Z ($TCZ): captures the current Z as this session's safe clearance height. Only works with Homing OFF ($22=0) and after $TLS has been run - the firmware will show an error in the log otherwise.">
+                          <span class="fas fa-fw fa-arrows-alt-v icon fg-orange"></span>TCZ
+                        </button>
+                      </td>
+                    </tr>
                   </table>
                 </div>
                 <div class="cell">
@@ -909,7 +920,12 @@
                       </td>
 
                       <td>
-
+                        <button class="button light square xlarge m-0 jogbtn xMyP jogcursorbtn" id="xMyP" data-role="ripple" data-ripple-color="#fa6800">
+                          <span class="fa-layers fa-fw">
+                            <i class="fas fa-arrow-up fg-orange" data-fa-transform="rotate--45 shrink-2 down-8.5"></i>
+                            <span class="fa-layers-text fg-orange" data-fa-transform="shrink-7 up-8" style="font-weight:600">X-Y+</span>
+                          </span>
+                        </button>
                       </td>
 
                       <td>
@@ -922,8 +938,13 @@
                       </td>
 
                       <td>
+                        <button class="button light square xlarge m-0 jogbtn xPyP jogcursorbtn" id="xPyP" data-role="ripple" data-ripple-color="#fa6800">
+                          <span class="fa-layers fa-fw">
+                            <i class="fas fa-arrow-up fg-orange" data-fa-transform="rotate-45 shrink-2 down-8.5"></i>
+                            <span class="fa-layers-text fg-orange" data-fa-transform="shrink-7 up-8" style="font-weight:600">X+Y+</span>
+                          </span>
+                        </button>
                       </td>
-
 
                       <td>
                         <button class="button light square xlarge m-0 ml-2 jogbtn zP jogcursorbtn" id="zP" data-role="ripple" data-ripple-color="#1ba1e2">
@@ -948,6 +969,45 @@
                     <tr>
 
                       <td class="4thaxis-active" style="display: none;">
+
+                      </td>
+
+                      <td>
+                        <button class="button light square xlarge m-0 jogbtn xM jogcursorbtn" id="xM" data-role="ripple" data-ripple-color="#e21b1b">
+                          <span class="fa-layers fa-fw">
+                            <i class="fas fa-arrow-left fg-red" data-fa-transform="shrink-2 down-8.5"></i>
+                            <span class="fa-layers-text fg-red" data-fa-transform="shrink-5 up-8" style="font-weight:600">X-</span>
+                          </span>
+                        </button>
+                      </td>
+
+                      <td class="p-0" style="vertical-align: middle; text-align: center;">
+                        <button class="button square m-0 bg-orange" id="stopJog" title="Cancel current jog move (sends GRBL/grblHAL real-time jog-cancel, 0x85) without a full E-Stop/reset" style="width: 55px; height: 55px; border-radius: 50%; border: none;" data-role="ripple" data-ripple-color="#ffffff">
+                          <span class="fa-layers fa-fw">
+                            <i class="fas fa-stop fg-white" data-fa-transform="shrink-4"></i>
+                          </span>
+                        </button>
+                      </td>
+
+                      <td>
+                        <button class="button light square xlarge m-0 jogbtn xP jogcursorbtn" id="xP" data-role="ripple" data-ripple-color="#e21b1b">
+                          <span class="fa-layers fa-fw">
+                            <i class="fas fa-arrow-right fg-red" data-fa-transform="shrink-2 down-8.5"></i>
+                            <span class="fa-layers-text fg-red" data-fa-transform="shrink-5 up-8" style="font-weight:600">X+</span>
+                          </span>
+                        </button>
+                      </td>
+                      <td>
+
+                      </td>
+                      <td class="servo-active" style="display: none;">
+
+                      </td>
+
+                    </tr>
+                    <tr>
+
+                      <td class="4thaxis-active" style="display: none;">
                         <button class="button light square xlarge m-0 jogbtn aM jogcursorbtn" id="aM" data-role="ripple" data-ripple-color="#fa6800">
                           <span class="fa-layers fa-fw">
                             <i class="fas fa-undo fg-orange" data-fa-transform="shrink-2 down-8.5"></i>
@@ -957,10 +1017,10 @@
                       </td>
 
                       <td>
-                        <button class="button light square xlarge m-0 jogbtn xM jogcursorbtn" id="xM" data-role="ripple" data-ripple-color="#e21b1b">
+                        <button class="button light square xlarge m-0 jogbtn xMyM jogcursorbtn" id="xMyM" data-role="ripple" data-ripple-color="#fa6800">
                           <span class="fa-layers fa-fw">
-                            <i class="fas fa-arrow-left fg-red" data-fa-transform="shrink-2 down-8.5"></i>
-                            <span class="fa-layers-text fg-red" data-fa-transform="shrink-5 up-8" style="font-weight:600">X-</span>
+                            <i class="fas fa-arrow-up fg-orange" data-fa-transform="rotate--135 shrink-2 down-8.5"></i>
+                            <span class="fa-layers-text fg-orange" data-fa-transform="shrink-7 up-8" style="font-weight:600">X-Y-</span>
                           </span>
                         </button>
                       </td>
@@ -975,10 +1035,10 @@
                       </td>
 
                       <td>
-                        <button class="button light square xlarge m-0 jogbtn xP jogcursorbtn" id="xP" data-role="ripple" data-ripple-color="#e21b1b">
+                        <button class="button light square xlarge m-0 jogbtn xPyM jogcursorbtn" id="xPyM" data-role="ripple" data-ripple-color="#fa6800">
                           <span class="fa-layers fa-fw">
-                            <i class="fas fa-arrow-right fg-red" data-fa-transform="shrink-2 down-8.5"></i>
-                            <span class="fa-layers-text fg-red" data-fa-transform="shrink-5 up-8" style="font-weight:600">X+</span>
+                            <i class="fas fa-arrow-up fg-orange" data-fa-transform="rotate-135 shrink-2 down-8.5"></i>
+                            <span class="fa-layers-text fg-orange" data-fa-transform="shrink-7 up-8" style="font-weight:600">X+Y-</span>
                           </span>
                         </button>
                       </td>
@@ -1001,24 +1061,6 @@
                         </button>
                       </td>
 
-                    </tr>
-                    <tr>
-                      <td colspan='5'>
-                        <table style="width: 100%;">
-                          <tr>
-                            <td><span class="text-small">Incremental Jog</span>
-                            </td>
-                            <td class="pb-1">
-                              <label class="toggle">
-                                <input type="checkbox" id="jogTypeContinuous" />
-                                <div>app-notification</div>
-                              </label>
-                            </td>
-                            <td><span class="text-small">Continuous Jog</span>
-                            </td>
-                          </tr>
-                        </table>
-                      </td>
                     </tr>
                     <tr>
                       <td class="4thaxis-active" style="display: none;">
@@ -1062,9 +1104,9 @@
                         </button>
                       </td>
                       <td>
-                        <button class="button light jogbtn distbtn metricbtn bd-openbuilds" id="dist10" style="width: 100%; height: 25px; line-height: 25px;">
+                        <button class="button light jogbtn distbtn metricbtn bd-orange" id="dist10" style="width: 100%; height: 25px; line-height: 25px;">
                           <span class=" fa-layers fa-fw">
-                            <span id="dist10label" class="fa-layers-text fg-openbuilds jogdistXYZ" data-fa-transform="" style="font-weight:900; font-family: Arial; font-size: 12px;">10mm</span>
+                            <span id="dist10label" class="fa-layers-text fg-orange jogdistXYZ" data-fa-transform="" style="font-weight:900; font-family: Arial; font-size: 12px;">10mm</span>
                           </span>
                         </button>
                       </td>
@@ -1072,6 +1114,13 @@
                         <button class="button light jogbtn distbtn metricbtn" id="dist100" style="width: 100%; height: 25px; line-height: 25px;">
                           <span class=" fa-layers fa-fw">
                             <span id="dist100label" class="fa-layers-text fg-gray jogdistXYZ" data-fa-transform="" style="font-weight:900; font-family: Arial; font-size: 12px;">100mm</span>
+                          </span>
+                        </button>
+                      </td>
+                      <td>
+                        <button class="button light jogbtn distbtn" id="distCONT" style="width: 100%; height: 25px; line-height: 25px;">
+                          <span class=" fa-layers fa-fw">
+                            <span id="distCONTlabel" class="fa-layers-text fg-gray" data-fa-transform="" style="font-weight:900; font-family: Arial; font-size: 12px;">CONT</span>
                           </span>
                         </button>
                       </td>
@@ -1105,7 +1154,7 @@
             </div>
 
 
-            <div id="controlLogs" class="mt-0">
+            <div id="controlLogs" class="mt-2">
 
               <nav data-role="ribbonmenu">
                 <ul class="tabs-holder">

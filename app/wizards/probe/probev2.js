@@ -221,8 +221,7 @@ function probeautotab() {
   probemode.stock.position == "fl"
   $('#runNewProbeBtn').addClass("disabled")
   $('#confirmNewProbeBtn').removeClass("disabled")
-  $('#jogTypeContinuous').prop('checked', true)
-  allowContinuousJog = true;
+  setContinuousMode(); // P7: forces Continuous mode + highlights the CONT button (jog.js)
   $('.probetabxyz').removeClass('active');
   $('#probeautotab').addClass('active');
 }
@@ -245,8 +244,7 @@ function probexyztab() {
   }
   $('#runNewProbeBtn').addClass("disabled")
   $('#confirmNewProbeBtn').removeClass("disabled")
-  $('#jogTypeContinuous').prop('checked', true)
-  allowContinuousJog = true;
+  setContinuousMode(); // P7: forces Continuous mode + highlights the CONT button (jog.js)
   $('.probetabxyz').removeClass('active');
   $('#probexyztab').addClass('active');
 }
@@ -265,8 +263,7 @@ function probextab() {
   $("#toggle-probe-advanced-content").data('collapse').collapse()
   $('#runNewProbeBtn').addClass("disabled")
   $('#confirmNewProbeBtn').removeClass("disabled")
-  $('#jogTypeContinuous').prop('checked', true)
-  allowContinuousJog = true;
+  setContinuousMode(); // P7: forces Continuous mode + highlights the CONT button (jog.js)
 }
 
 function probeytab() {
@@ -283,8 +280,7 @@ function probeytab() {
   $("#toggle-probe-advanced-content").data('collapse').collapse()
   $('#runNewProbeBtn').addClass("disabled")
   $('#confirmNewProbeBtn').removeClass("disabled")
-  $('#jogTypeContinuous').prop('checked', true)
-  allowContinuousJog = true;
+  setContinuousMode(); // P7: forces Continuous mode + highlights the CONT button (jog.js)
 }
 
 function probeztab() {
@@ -302,8 +298,7 @@ function probeztab() {
   $("#toggle-probe-advanced-content").data('collapse').collapse()
   $('#runNewProbeBtn').addClass("disabled")
   $('#confirmNewProbeBtn').removeClass("disabled")
-  $('#jogTypeContinuous').prop('checked', true)
-  allowContinuousJog = true;
+  setContinuousMode(); // P7: forces Continuous mode + highlights the CONT button (jog.js)
 }
 
 function probezplatetab() {
@@ -320,8 +315,7 @@ function probezplatetab() {
   $("#toggle-probe-advanced-content").data('collapse').collapse()
   $('#runNewProbeBtn').addClass("disabled")
   $('#confirmNewProbeBtn').removeClass("disabled")
-  $('#jogTypeContinuous').prop('checked', true)
-  allowContinuousJog = true;
+  setContinuousMode(); // P7: forces Continuous mode + highlights the CONT button (jog.js)
   $('#z0platethickness').val(zprobeplate.zoffset)
   $('.probetabxyz').removeClass('active');
   $('#probezplatetab').addClass('active');
@@ -347,8 +341,7 @@ function probeendmilltab() {
   $("#toggle-probe-advanced-content").data('collapse').collapse()
   $('#runNewProbeBtn').addClass("disabled")
   $('#confirmNewProbeBtn').removeClass("disabled")
-  $('#jogTypeContinuous').prop('checked', true)
-  allowContinuousJog = true;
+  setContinuousMode(); // P7: forces Continuous mode + highlights the CONT button (jog.js)
 }
 
 function resetOffsetFL() {
@@ -433,13 +426,9 @@ function confirmProbeInPlace(operation) {
 function resetJogModeAfterProbe() {
   if (localStorage.getItem('continuousJog')) {
     if (JSON.parse(localStorage.getItem('continuousJog')) == true) {
-      $('#jogTypeContinuous').prop('checked', true)
-      allowContinuousJog = true;
-      $('.distbtn').hide()
+      setContinuousMode();
     } else {
-      $('#jogTypeContinuous').prop('checked', false)
-      allowContinuousJog = false;
-      $('.distbtn').show();
+      setIncrementalMode();
     }
   }
   $('#confirmNewProbeBtn').removeClass("disabled")

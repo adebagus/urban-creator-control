@@ -300,18 +300,14 @@ function bindKeys() {
     if (keyboardShortcuts.stepM.length) {
       $(document).bind('keydown', keyboardShortcuts.stepM, function(e) {
         e.preventDefault();
-        $('#jogTypeContinuous').prop('checked', false)
-        allowContinuousJog = false;
-        $('.distbtn').show();
+        // P7: changeStepSize() forces Incremental mode and re-highlights the
+        // right button itself now - no need to touch allowContinuousJog here.
         changeStepSize(-1)
       });
     }
     if (keyboardShortcuts.stepP.length) {
       $(document).bind('keydown', keyboardShortcuts.stepP, function(e) {
         e.preventDefault();
-        $('#jogTypeContinuous').prop('checked', false)
-        allowContinuousJog = false;
-        $('.distbtn').show();
         changeStepSize(1)
       });
     }
@@ -374,20 +370,14 @@ function bindKeys() {
     if (keyboardShortcuts.incJogMode.length) {
       $(document).bind('keydown', keyboardShortcuts.incJogMode, function(e) {
         e.preventDefault();
-        localStorage.setItem('continuousJog', false);
-        $('#jogTypeContinuous').prop('checked', false)
-        allowContinuousJog = false;
-        $('.distbtn').show();
+        setIncrementalMode();
       });
     }
 
     if (keyboardShortcuts.conJogMode.length) {
       $(document).bind('keydown', keyboardShortcuts.conJogMode, function(e) {
         e.preventDefault();
-        localStorage.setItem('continuousJog', true);
-        $('#jogTypeContinuous').prop('checked', true)
-        allowContinuousJog = true;
-        $('.distbtn').hide()
+        setContinuousMode();
       });
     }
 

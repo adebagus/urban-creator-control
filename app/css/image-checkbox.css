@@ -64,6 +64,19 @@
   transform-origin: 50% 50%;
 }
 
+/* P6: Font Awesome icon variant of the same toggle, sized to match the
+   64x64 <img> icons above so it lines up with them in the same row. */
+.image-checkbox-ul label i {
+  display: block;
+  height: 64px;
+  width: 64px;
+  line-height: 64px;
+  font-size: 44px;
+  text-align: center;
+  transition-duration: 0.2s;
+  transform-origin: 50% 50%;
+}
+
 .image-checkbox-ul :checked+label {
   border-color: #ddd;
 }
@@ -78,4 +91,8 @@
   transform: scale(0.9);
   /* box-shadow: 0 0 5px #333; */
   z-index: -1;
+}
+
+.image-checkbox-ul :checked+label i {
+  transform: scale(0.9);
 }
