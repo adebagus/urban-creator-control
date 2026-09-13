@@ -203,6 +203,10 @@ test('diagonal jog mouseup cancels the jog when in Continuous mode (calls cancel
   const { context, $, socket } = freshJog({ grblParams: { $20: '0' } });
   context.allowContinuousJog = true;
   context.bindDiagonalJog('.xMyM', -1, -1);
+  // P8: mouseup now gates on continuousJogRunning (not allowContinuousJog),
+  // so a real mousedown must run first to set that flag - matches how this
+  // is actually reached in the app (mousedown always precedes mouseup).
+  triggerMousedown($, '.xMyM');
   $('.xMyM').trigger('mouseup', { preventDefault: () => {} });
 
   const stopCalls = socket.emitted.filter((e) => e.event === 'stop');
@@ -227,5 +231,85 @@ test('cancelJog sends the jog-cancel stop signal, not a full abort', () => {
   assert.equal(data.stop, false);
   assert.equal(data.jog, true, 'Stop Jog must use the jog-cancel (0x85) path, not a full abort');
   assert.equal(data.abort, false);
+  assert.equal(context.continuousJogRunning, false);
+});
+
+// --- P8: tap-vs-hold (gSender-inspired) -------------------------------------
+// A fixed-distance jog button (not CONT) still sends its incremental move
+// instantly at mousedown, same as always - but if still held past
+// HOLD_TO_CONTINUOUS_MS (300ms) without a mouseup, it additionally upgrades
+// to a continuous move exactly like CONT mode's mousedown does. These use
+// real timers (see test/helpers/sandbox.js), so they're genuinely async.
+
+test('a quick tap (mouseup well before the hold threshold) never upgrades to a continuous jog', async () => {
+  const { context, $, socket } = freshJog({ unit: 'mm', grblParams: { $20: '0' } });
+  context.jogdistXYZ = 10;
+  context.allowContinuousJog = false;
+  context.bindDiagonalJog('.xPyP', 1, 1);
+
+  triggerMousedown($, '.xPyP');
+  $('.xPyP').trigger('mouseup', { preventDefault: () => {} });
+  await new Promise((resolve) => setTimeout(resolve, 350)); // outlive the threshold
+
+  const jogXYCalls = socket.emitted.filter((e) => e.event === 'jogXY');
+  assert.equal(jogXYCalls.length, 1, 'only the single incremental jogXY from mousedown - the upgrade must not fire after mouseup already cleared it');
+  assert.equal(Number(jogXYCalls[0].data.x), 10);
+  assert.equal(context.continuousJogRunning, false);
+});
+
+test('holding past the threshold upgrades to a continuous jog, and the later mouseup cancels it', async () => {
+  const { context, $, socket } = freshJog({ unit: 'mm', grblParams: { $20: '0' } });
+  context.jogdistXYZ = 10;
+  context.allowContinuousJog = false;
+  context.bindDiagonalJog('.xPyP', 1, 1);
+
+  triggerMousedown($, '.xPyP');
+  // Still held past the 300ms threshold - no mouseup yet.
+  await new Promise((resolve) => setTimeout(resolve, 350));
+
+  const jogXYCallsAfterHold = socket.emitted.filter((e) => e.event === 'jogXY');
+  assert.equal(jogXYCallsAfterHold.length, 2, 'the original instant incremental move, plus the hold-upgraded continuous move');
+  assert.equal(Number(jogXYCallsAfterHold[0].data.x), 10, 'first call is the unchanged instant incremental move');
+  assert.equal(Number(jogXYCallsAfterHold[1].data.x), 1000, 'second call is the continuous-distance upgrade');
+  assert.equal(context.continuousJogRunning, true, 'hold-upgrade must mark a continuous jog as running even though allowContinuousJog (CONT mode) is still false');
+
+  $('.xPyP').trigger('mouseup', { preventDefault: () => {} });
+  const stopCalls = socket.emitted.filter((e) => e.event === 'stop');
+  assert.equal(stopCalls.length, 1, 'mouseup after a hold-upgrade must still cancel the jog (this is exactly the bug the allowContinuousJog -> continuousJogRunning mouseup fix prevents)');
+  assert.equal(context.continuousJogRunning, false);
+});
+
+test('hold-upgrade still fires while runStatus has flipped to "Jog" by the 300ms check (bug found via manual hardware testing)', async () => {
+  // A slow/long incremental move (e.g. 100mm at a reduced feed override) is
+  // very likely still executing by the time the hold-upgrade timer checks
+  // in - GRBL correctly reports "Jog" at that point, not "Idle", because
+  // it's OUR OWN incremental move still running. Requiring "Idle" here
+  // blocked the upgrade on itself; "Jog" must be explicitly allowed.
+  const { context, $, socket } = freshJog({ unit: 'mm', grblParams: { $20: '0' } });
+  context.jogdistXYZ = 100;
+  context.allowContinuousJog = false;
+  context.bindDiagonalJog('.xPyP', 1, 1);
+
+  triggerMousedown($, '.xPyP');
+  context.laststatus.comms.runStatus = 'Jog';
+  await new Promise((resolve) => setTimeout(resolve, 350));
+
+  const jogXYCalls = socket.emitted.filter((e) => e.event === 'jogXY');
+  assert.equal(jogXYCalls.length, 2, 'the upgrade must still fire while runStatus is "Jog" from our own incremental move');
+  assert.equal(context.continuousJogRunning, true);
+});
+
+test('hold-upgrade does NOT fire while runStatus is a genuinely blocking state (Alarm)', async () => {
+  const { context, $, socket } = freshJog({ unit: 'mm', grblParams: { $20: '0' } });
+  context.jogdistXYZ = 10;
+  context.allowContinuousJog = false;
+  context.bindDiagonalJog('.xPyP', 1, 1);
+
+  triggerMousedown($, '.xPyP');
+  context.laststatus.comms.runStatus = 'Alarm';
+  await new Promise((resolve) => setTimeout(resolve, 350));
+
+  const jogXYCalls = socket.emitted.filter((e) => e.event === 'jogXY');
+  assert.equal(jogXYCalls.length, 1, 'only the original incremental move - the upgrade must not fire during Alarm');
   assert.equal(context.continuousJogRunning, false);
 });

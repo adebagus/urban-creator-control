@@ -168,6 +168,11 @@ function loadAppScript(relativeFilePath, extraGlobals = {}) {
     unit: 'mm',
     waitingForStatus: false,
     printLog: () => {},
+    // P8: app/js/jog.js's tap-vs-hold upgrade timer needs real timers - use
+    // Node's own (this file runs outside the vm sandbox, in the same
+    // process, so they're the real thing, not a fake/instant stand-in).
+    setTimeout: (...args) => setTimeout(...args),
+    clearTimeout: (...args) => clearTimeout(...args),
     Metro: { toast: { create: () => () => {} } },
     document: {
       activeElement: { blur: () => {} },
