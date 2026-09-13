@@ -1,5 +1,14 @@
 process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = '1';
 
+// Urban Creator CONTROL (DEV) display name for tray/window/notification text.
+// Must stay a literal string, NOT require('./package').build.productName -
+// electron-builder strips the "build" block out of package.json when it
+// packages app.asar (verified against dist/win-unpacked's actual built
+// app.asar), so that would throw at runtime in the packaged app. Declared
+// here, before any other code, since it's used as early as the first
+// debug_log() call below.
+const APP_DISPLAY_NAME = "Urban Creator CONTROL (DEV)"
+
 process.on('uncaughtException', function(err) {
   //showErrorDialog(err, attempts = 2) // make two attempts to show an uncaughtException in a dialog
   if (DEBUG) {
@@ -55,7 +64,7 @@ function debug_log() {
   }
 } // end Debug Logger
 
-debug_log("Starting OpenBuilds CONTROL v" + require('./package').version)
+debug_log("Starting " + APP_DISPLAY_NAME + " v" + require('./package').version)
 
 var config = {};
 config.webPorts = [3000, 3020, 3200, 3220]
@@ -855,7 +864,7 @@ io.on("connection", function(socket) {
       center: true,
       resizable: true,
       maximizable: true,
-      title: "OpenBuilds CONTROL: Chromium's GPU Report",
+      title: APP_DISPLAY_NAME + ": Chromium's GPU Report",
       frame: true,
       autoHideMenuBar: true,
       //icon: '/app/favicon.png',
@@ -2463,6 +2472,45 @@ function stopPort() {
 // (CH340/FTDI/CP210x/etc). All quit call sites now route through here.
 var isQuitting = false;
 
+// Firmware flashing (flashBLOX/flashInterface/flashGrblHal) spawns an
+// esptool child process that opens the COM port itself, entirely outside
+// node's `port`/serialport handle. If the app quit/crashed mid-flash with
+// nothing tracking that child, it survives as an orphan holding the port
+// long after the main app is gone - invisible unless you go looking for
+// "esptool.exe" in Task Manager. Track every such child so quit can reap it.
+var activeChildProcesses = [];
+
+function trackChildProcess(child, label) {
+  if (!child) return;
+  activeChildProcesses.push({
+    child: child,
+    label: label
+  });
+  child.on('exit', function() {
+    activeChildProcesses = activeChildProcesses.filter(function(entry) {
+      return entry.child !== child;
+    });
+  });
+}
+
+function killActiveChildProcesses() {
+  if (activeChildProcesses.length === 0) return;
+  activeChildProcesses.forEach(function(entry) {
+    serialLog('warn', 'Terminating child process still running at quit: ' + entry.label + ' (pid ' + entry.child.pid + ')');
+    try {
+      entry.child.kill();
+    } catch (e) {
+      serialLog('error', 'Failed to terminate child process ' + entry.label + ': ' + e.message);
+    }
+  });
+  io.sockets.emit('data', {
+    'command': '',
+    'response': 'Application is closing - an in-progress firmware flash was interrupted.',
+    'type': 'error'
+  });
+  activeChildProcesses = [];
+}
+
 function quitAndCleanup(exitCode) {
   if (isQuitting) return;
   isQuitting = true;
@@ -2475,6 +2523,8 @@ function quitAndCleanup(exitCode) {
       appIcon.destroy();
     } catch (e) {}
   }
+
+  killActiveChildProcesses();
 
   var finished = false;
 
@@ -3241,7 +3291,7 @@ if (isElectron()) {
             showJogWindow()
           }
         }, {
-          label: 'Quit OpenBuilds CONTROL (Disables all integration until started again)',
+          label: 'Quit ' + APP_DISPLAY_NAME + ' (Disables all integration until started again)',
           click() {
             quitAndCleanup(0);
           }
@@ -3268,14 +3318,14 @@ if (isElectron()) {
         if (appIcon) {
           appIcon.displayBalloon({
             icon: nativeImage.createFromPath(iconPath),
-            title: "OpenBuilds CONTROL Started",
+            title: APP_DISPLAY_NAME + " Started",
             // content: "OpenBuilds CONTROL has started successfully: Active on " + ip.address() + ":" + config.webPort
-            content: "OpenBuilds CONTROL has started successfully"
+            content: APP_DISPLAY_NAME + " has started successfully"
           })
         }
       } else {
         const dockMenu = Menu.buildFromTemplate([{
-          label: 'Quit OpenBuilds CONTROL (Disables all integration until started again)',
+          label: 'Quit ' + APP_DISPLAY_NAME + ' (Disables all integration until started again)',
           click() {
             quitAndCleanup(0);
           }
@@ -3297,7 +3347,7 @@ if (isElectron()) {
         center: true,
         resizable: true,
         maximizable: true,
-        title: "OpenBuilds CONTROL ",
+        title: APP_DISPLAY_NAME,
         frame: false,
         autoHideMenuBar: true,
         //icon: '/app/favicon.png',
@@ -3668,6 +3718,7 @@ function flashBLOX(data) {
     fs.chmodSync(path.join(__dirname, "./esptool-mac").replace('app.asar', 'app.asar.unpacked'), 0o755);
     var child = spawn(path.join(__dirname, "./esptool-mac").replace('app.asar', 'app.asar.unpacked'), esptool_opts);
   }
+  trackChildProcess(child, 'esptool (BLOX flash)');
 
 
 
@@ -3763,6 +3814,7 @@ function flashInterface(data) {
     fs.chmodSync(path.join(__dirname, "./esptool-mac").replace('app.asar', 'app.asar.unpacked'), 0o755);
     var child = spawn(path.join(__dirname, "./esptool-mac").replace('app.asar', 'app.asar.unpacked'), esptool_opts);
   }
+  trackChildProcess(child, 'esptool (Interface flash)');
 
 
 
@@ -3857,6 +3909,7 @@ function flashGrblHal(data) {
     fs.chmodSync(path.join(__dirname, "./esptool-mac").replace('app.asar', 'app.asar.unpacked'), 0o755);
     var child = spawn(path.join(__dirname, "./esptool-mac").replace('app.asar', 'app.asar.unpacked'), esptool_opts);
   }
+  trackChildProcess(child, 'esptool (grblHAL/BlackBoxX32 flash)');
 
 
   child.stdout.on('data', function(data) {
