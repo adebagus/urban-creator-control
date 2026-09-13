@@ -45,21 +45,29 @@ function selectMachine(type) {
   // P6: replaced the entire OpenBuilds machine-preset system (Sphinx, Workbee,
   // Acro, C-Beam, LEAD, MiniMill - each silently writing ~30 settings such as
   // steps/mm, max rate, acceleration and travel limits) with exactly two
-  // profiles, Router and Laser. Deliberately minimal and auditable: Router
-  // touches nothing at all; Laser touches only $32 and $44, per explicit
-  // user decision (see P6 notes) after confirming this codebase has no
-  // established default for $44/$45 to build on. No other setting is ever
-  // written here - hard limits ($21) and homing ($22) are independent
-  // toggles handled by toggleHardLimits()/toggleHoming() in grbl-settings.js,
-  // not by this function.
+  // profiles, Router and Laser. Deliberately minimal and auditable: only
+  // $32 and $44 are ever touched. No other setting is ever written here -
+  // hard limits ($21) and homing ($22) are independent toggles handled by
+  // toggleHardLimits()/toggleHoming() in grbl-settings.js, not by this
+  // function.
+  //
+  // P8 bug fix: Router used to be a no-op, on the assumption that $32/$44
+  // were already at their firmware defaults. That assumption breaks the
+  // moment a user selects Laser first - Router's no-op then can't undo
+  // Laser's $32=1/$44=0, so the firmware stays stuck in Laser mode even
+  // though the UI shows Router selected. Router now explicitly writes back
+  // to the confirmed real GRBL Mythos UC-100 defaults ($32=0, $44=4, from
+  // $I query) instead of assuming nothing needs to change.
   if (type == "laser") {
     $("#val-32-input").val(1); // Laser mode ON ($32)
     $("#val-44-input").val(0); // Disable homing cycle 1 - see P6 notes: this
     // assumes the connected firmware's own default already has X+Y (mask 3)
     // in $45. Verify $45 on your actual UC-100/UC-200 board before relying
     // on this to keep Z out of the homing cycle.
+  } else {
+    $("#val-32-input").val(0); // Laser mode OFF ($32) - confirmed UC-100 default
+    $("#val-44-input").val(4); // Homing cycle 1 = Z only - confirmed UC-100 default
   }
-  // "router" (or anything else): no settings touched at all.
 
   checkifchanged();
   setMachineButton(type);

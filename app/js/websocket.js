@@ -134,7 +134,7 @@ function initSocket() {
     console.log("WEBSOCKET DISCONNECTED")
     var icon = ''
     var source = "websocket"
-    var string = "Disconnected.  OpenBuilds CONTROL probably quit or crashed"
+    var string = "Disconnected.  Urban Creator CONTROL probably quit or crashed"
     var printLogCls = "fg-darkRed"
     printLogModern(icon, source, string, printLogCls)
     $("#websocketstatus").html("Disconnected")
@@ -381,8 +381,12 @@ function initSocket() {
   });
 
   socket.on("machinename", function(data) {
-    if (typeof setMachineButton !== 'undefined') {
-      setMachineButton(data)
+    // P8: "data" here is the firmware's free-text $I= marker, not $32 - it
+    // can drift out of sync with the real Laser mode setting (that's the
+    // exact bug this was fixed for), so it's no longer used to drive the
+    // Router/Laser checkmark. Just re-sync from the actual $32 instead.
+    if (typeof syncMachineProfileCheckbox !== 'undefined') {
+      syncMachineProfileCheckbox()
     }
   });
 

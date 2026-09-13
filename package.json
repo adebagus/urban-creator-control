@@ -1,9 +1,9 @@
 {
-  "name": "urban-creator-control-dev",
+  "name": "urban-creator-control",
   "version": "1.0.390",
   "license": "AGPL-3.0",
-  "description": "OpenBuildsCONTROL CNC Machine Host Software",
-  "author": "github.com/openbuilds <support@openbuilds.com>",
+  "description": "Urban Creator CONTROL CNC Machine Host Software",
+  "author": "Urban Creator CONTROL",
   "resolutions": {
     "@electron/notarize": "2.3.2"
   },
@@ -70,7 +70,7 @@
     },
     "icon": "build/icon.icns",
     "appId": "id.urbancreator.control.dev",
-    "productName": "Urban Creator CONTROL (DEV)",
+    "productName": "Urban Creator CONTROL",
     "asar": true,
     "nsis": {
       "oneClick": false,

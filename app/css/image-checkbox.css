@@ -83,7 +83,7 @@
 
 .image-checkbox-ul :checked+label:before {
   content: "✓";
-  background-color: grey;
+  background-color: #fa6800;
   transform: scale(1);
 }
 

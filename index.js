@@ -7,7 +7,7 @@ process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = '1';
 // app.asar), so that would throw at runtime in the packaged app. Declared
 // here, before any other code, since it's used as early as the first
 // debug_log() call below.
-const APP_DISPLAY_NAME = "Urban Creator CONTROL (DEV)"
+const APP_DISPLAY_NAME = "Urban Creator CONTROL"
 
 process.on('uncaughtException', function(err) {
   //showErrorDialog(err, attempts = 2) // make two attempts to show an uncaughtException in a dialog
@@ -685,7 +685,7 @@ app.get('/api/version', (req, res) => {
 
 app.get('/activate', (req, res) => {
   debug_log(req.hostname)
-  res.send('Host: ' + req.hostname + ' asked to activate OpenBuilds CONTROL v' + require('./package').version);
+  res.send('Host: ' + req.hostname + ' asked to activate Urban Creator CONTROL v' + require('./package').version);
   showJogWindow()
   setTimeout(function() {
     io.sockets.emit('activate', req.hostname);
@@ -855,7 +855,7 @@ io.on("connection", function(socket) {
     const {
       shell
     } = require('electron')
-    shell.openExternal('https://www.openbuilds.com')
+    shell.openExternal('https://urbancreator.id')
   });
 
   socket.on("openbuildspartstore", function(data) {
@@ -2865,7 +2865,7 @@ function parseFeedback(data) {
         pause();
         var output = {
           'command': '[external from hardware]',
-          'response': "OpenBuilds CONTROL received a FEEDHOLD notification from Grbl: This could be due to someone pressing the HOLD button (if connected)",
+          'response': "Urban Creator CONTROL received a FEEDHOLD notification from Grbl: This could be due to someone pressing the HOLD button (if connected)",
           'type': 'info'
         }
         io.sockets.emit('data', output);
@@ -2881,7 +2881,7 @@ function parseFeedback(data) {
         stop(true);
         var output = {
           'command': '[external from hardware]',
-          'response': "OpenBuilds CONTROL received a RESET/ABORT notification from Grbl: This could be due to someone pressing the RESET/ABORT button (if connected)",
+          'response': "Urban Creator CONTROL received a RESET/ABORT notification from Grbl: This could be due to someone pressing the RESET/ABORT button (if connected)",
           'type': 'info'
         }
         io.sockets.emit('data', output);
@@ -2892,7 +2892,7 @@ function parseFeedback(data) {
         unpause();
         var output = {
           'command': '[external from hardware]',
-          'response': "OpenBuilds CONTROL received a CYCLESTART/RESUME notification from Grbl: This could be due to someone pressing the CYCLESTART/RESUME button (if connected)",
+          'response': "Urban Creator CONTROL received a CYCLESTART/RESUME notification from Grbl: This could be due to someone pressing the CYCLESTART/RESUME button (if connected)",
           'type': 'info'
         }
         io.sockets.emit('data', output);

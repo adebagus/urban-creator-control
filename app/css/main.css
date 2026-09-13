@@ -201,6 +201,77 @@ select {
   background: #ffffff !important;
 }
 
+/* P8: Urban Creator orange (#fa6800) accent, applied on top of Metro4's
+   defaults/dark theme WITHOUT touching the vendor CSS files directly (see
+   the fg/bg/bd-openbuilds block above for the established pattern - same
+   approach here, loaded once via main.css so it reaches both app/index.html
+   (metro-all.min.css) and app/jog/index.html (metro-all.css) automatically).
+   Deliberately excludes: fg/bg/bd-openbuilds (kept black for contrast - see
+   prior investigation), the hi-contrast theme's own cyan/white accents
+   (its .theme_hicontrast-prefixed rules are more specific and load later
+   via theme.js, so they still win where they exist), and the .toggle
+   switch / direction-invert checkboxes (left grey, not in scope). */
+
+/* Active ribbon tab + generic .tabs widget active state */
+.ribbon-menu .tabs-holder .active {
+  background-color: #fa6800;
+  border-color: #fa6800;
+}
+
+.theme_dark .ribbon-menu .tabs-holder .active {
+  background-color: #fa6800 !important;
+  border-color: #fa6800 !important;
+}
+
+.tabs>ul.tabs-list>li.active {
+  background-color: #fa6800;
+}
+
+.theme_dark .tabs>ul.tabs-list>li.active {
+  background-color: #fa6800 !important;
+}
+
+/* Ribbon content-holder: a light tint (not solid orange) so the active tab
+   doesn't look "cut off" from the toolbar strip below it, without washing
+   out the many semantically-colored ribbon-button icons that live inside
+   it (fg-red/fg-lightOrange/fg-gray, etc.) - full solid orange there made
+   several of those icons unreadable in testing. Light theme only; dark/
+   hicontrast keep their own already-tuned content-holder background. */
+.ribbon-menu .content-holder {
+  background-color: #fff4ea;
+}
+
+/* Ribbon button hover accent (was Metro4's default light blue #a4cef9) */
+.ribbon-button:hover,
+.ribbon-icon-button:hover {
+  border-color: #fa6800;
+  background-color: rgba(250, 104, 0, 0.2);
+}
+
+/* Main button border - excludes .alert (danger/stop) and .success
+   (safe/run) so those semantic red/green colors stay unambiguous */
+.button:not(.alert):not(.success) {
+  border: 1px solid #fa6800 !important;
+}
+
+/* Dedicated accent classes for the title bar (kept separate from the
+   generic bg-black/bd-black utility classes, which stay black everywhere
+   else they might be used) */
+.bg-uc-accent {
+  background-color: #fa6800 !important;
+}
+
+.bd-uc-accent {
+  border-color: #fa6800 !important;
+}
+
+/* Metro4's native checkbox/radio checked-state (default near-black #1d1d1d) */
+.checkbox input[type="checkbox"]:checked~.check,
+.radio input[type="radio"]:checked~.check {
+  border-color: #fa6800 !important;
+  background-color: #fa6800 !important;
+}
+
 .keyboardpanel td:nth-child(1) {
   width: 60px;
   height: 60px;

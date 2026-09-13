@@ -18,7 +18,7 @@ const exists = (relPath) => fs.existsSync(path.join(ROOT, relPath));
 // ---------------------------------------------------------------------------
 test('P0: package.json identity is isolated from the real OpenBuilds CONTROL', () => {
   const pkg = JSON.parse(read('package.json'));
-  assert.equal(pkg.name, 'urban-creator-control-dev');
+  assert.equal(pkg.name, 'urban-creator-control');
   assert.notEqual(pkg.build.appId, 'openbuilds.control');
   assert.equal(pkg.build.appId, 'id.urbancreator.control.dev');
   assert.notEqual(pkg.build.productName, 'OpenBuildsCONTROL');

@@ -353,15 +353,11 @@ function grblPopulate() {
       $('#homeBtn').attr('disabled', true)
     }
 
-    // P6: best-effort sync of the Router/Laser radio from the firmware's
-    // current $32 - this is a display-only guess (laser mode ON implies the
-    // Laser profile), it never writes anything back to the firmware itself.
-    $('#simpleprofile_laser').prop('checked', parseFloat(grblParams['$32']) == 1);
-    $('#simpleprofile_router').prop('checked', parseFloat(grblParams['$32']) != 1);
-
-    setTimeout(function() {
-      setMachineButton(laststatus.machine.name)
-    }, 500)
+    // P8: sync of the Router/Laser radio from the firmware's actual current
+    // $32 - this is the single source of truth for the checkmark (see
+    // syncMachineProfileCheckbox() below). It never writes anything back to
+    // the firmware itself.
+    syncMachineProfileCheckbox();
 
     populateRestoreMenu();
   }
@@ -838,4 +834,16 @@ function toggleHoming() {
 function syncHardLimitAndHomingCheckboxes() {
   $('#hardlimitsenabled:checkbox').prop('checked', parseFloat($("#val-21-input").val()) == 1);
   $('#homingenabled:checkbox').prop('checked', parseFloat($("#val-22-input").val()) > 0);
+}
+
+// P8: single source of truth for the Router/Laser radio checkmark - always
+// derived from the firmware's actual $32 value (grblParams, populated from
+// a real $$ dump), never from the $I= free-text marker or a static "what
+// was last clicked" guess. Those went out of sync in a real bug: Router
+// used to be a no-op, so after Laser -> Router the marker said "router"
+// while $32 was still 1 - proof that the marker alone isn't reliable.
+function syncMachineProfileCheckbox() {
+  var isLaser = parseFloat(grblParams['$32']) == 1;
+  $('#simpleprofile_laser').prop('checked', isLaser);
+  $('#simpleprofile_router').prop('checked', !isLaser);
 }

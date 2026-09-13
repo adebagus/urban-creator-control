@@ -16,15 +16,15 @@ exports.default = async function notarizing(context) {
 
   try {
     await notarize({
-      appBundleId: "app.openbuilds.control",
+      appBundleId: "id.urbancreator.control.dev",
       appPath: `${appOutDir}/${appName}.app`,
       appleId: process.env.APPLE_ID,
       appleIdPassword: process.env.APPLE_APP_SPECIFIC_PASSWORD,
       teamId: process.env.APPLE_TEAM_ID,
     });
 
-    console.log("Notarization using OpenBuilds CONTROL's custom notarize.js script: successful");
+    console.log("Notarization using Urban Creator CONTROL's custom notarize.js script: successful");
   } catch (error) {
-    console.error("Notarization using OpenBuilds CONTROL's custom notarize.js script: failed:", error);
+    console.error("Notarization using Urban Creator CONTROL's custom notarize.js script: failed:", error);
   }
 };

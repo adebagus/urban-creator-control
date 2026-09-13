@@ -1,4 +1,4 @@
-// Automated regression tests for the P6 Router/Laser profile logic. Runs
+// Automated regression tests for the P6/P8 Router/Laser profile logic. Runs
 // the REAL app/js/grbl-settings-defaults.js through the sandbox (see
 // test/helpers/sandbox.js) - no browser, no hardware.
 //
@@ -9,7 +9,14 @@
 // the user explicitly chose "$44=0, leave $45 untouched" over the safer
 // "$44=3, $45=0" alternative, precisely BECAUSE no default could be
 // confirmed). If a future change makes Laser touch $45, or makes Router
-// touch anything at all, these tests should fail.
+// touch anything beyond $32/$44, these tests should fail.
+//
+// P8 bug fix: Router used to be a documented no-op ("leaves everything
+// as-is"), on the assumption $32/$44 were already at firmware defaults.
+// That broke the moment a user picked Laser first: Router's no-op couldn't
+// undo Laser's $32=1/$44=0, so the firmware stayed stuck in Laser mode
+// while the UI showed Router selected. Router now explicitly writes back
+// the confirmed real GRBL Mythos UC-100 defaults ($32=0, $44=4).
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -22,15 +29,27 @@ function freshProfile(extraGlobals) {
   });
 }
 
-test('Router profile touches zero settings ($21/$22/$32/$44/$45 all untouched)', () => {
-  const { context, $, socket } = freshProfile();
+test('Router profile explicitly resets $32=0 and $44=4 (the confirmed UC-100 defaults)', () => {
+  const { context, $ } = freshProfile();
   context.selectMachine('router');
 
-  for (const key of ['#val-21-input', '#val-22-input', '#val-32-input', '#val-44-input', '#val-45-input', '#val-46-input']) {
+  assert.equal($.values['#val-32-input'], 0, 'Router must turn Laser mode OFF ($32=0) - it must not just leave whatever Laser left behind');
+  assert.equal($.values['#val-44-input'], 4, 'Router must restore homing cycle 1 to Z-only ($44=4), the confirmed UC-100 default');
+});
+
+test('Router profile does not touch $21/$22/$45/$46 (Hard Limits/Homing stay independent, no invented default for $45/$46)', () => {
+  const { context, $ } = freshProfile();
+  context.selectMachine('router');
+
+  for (const key of ['#val-21-input', '#val-22-input', '#val-45-input', '#val-46-input']) {
     assert.equal($.wasTouched(key), false, `Router must not touch ${key}`);
   }
-  // The only side effects Router is allowed: the $I= marker (so reconnect
-  // remembers the profile) and the radio-button highlight.
+});
+
+test('Router profile still sends only the $I= marker as a live GCode command (the $32/$44 write is staged for Save-to-Firmware, same as Laser)', () => {
+  const { context, socket } = freshProfile();
+  context.selectMachine('router');
+
   const sentGcode = socket.emitted.filter((e) => e.event === 'runCommand').map((e) => e.data);
   assert.deepStrictEqual(sentGcode, ['$I=router']);
 });

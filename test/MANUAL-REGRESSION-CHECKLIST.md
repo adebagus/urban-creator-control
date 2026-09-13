@@ -1,4 +1,4 @@
-# Urban Creator CONTROL (DEV) — Manual Regression Checklist (P0–P7)
+# Urban Creator CONTROL — Manual Regression Checklist (P0–P7)
 
 Cara pakai: centang `[x]` tiap item setelah lolos. Kolom **Cepat cek kalau gagal**
 kasih tempat pertama yang harus dilihat, supaya tidak perlu re-investigasi dari nol.
@@ -16,15 +16,17 @@ board Anda semua STM32, bukan ESP32.
 
 ## P0 — DEV Build Isolation
 
-- [ ] **Instalasi berdampingan**: install Urban Creator CONTROL (DEV) di mesin yang
+- [ ] **Instalasi berdampingan**: install Urban Creator CONTROL di mesin yang
       juga sudah ada OpenBuilds CONTROL asli. Jalankan KEDUANYA bersamaan.
       **Harapan**: dua proses terpisah di Task Manager, dua tray icon terpisah,
       tidak ada crash/rebutan resource.
       **Cepat cek**: `%APPDATA%\UrbanCreatorCONTROL-dev\` harus ada terpisah dari
       folder OpenBuilds CONTROL asli.
-- [ ] **Tray/window identity**: judul window, tray tooltip, AUMID (klik kanan taskbar
-      icon → properties) harus menunjukkan "Urban Creator CONTROL (DEV)", bukan
-      "OpenBuilds CONTROL".
+- [ ] **Tray/window identity**: judul window, tray tooltip harus menunjukkan
+      "Urban Creator CONTROL" (tanpa suffix "(DEV)" - branding final sejak P8),
+      bukan "OpenBuilds CONTROL". AUMID (klik kanan taskbar icon → properties)
+      tetap `id.urbancreator.control.dev` - itu ID internal Windows, sengaja
+      TIDAK diubah di P8 supaya tidak bentrok dengan install DEV yang sudah ada.
       **Cepat cek**: `npm test` → test `P0: package.json identity...` (otomatis).
 
 ## P1 — Serial Port Lifecycle
@@ -54,7 +56,7 @@ board Anda semua STM32, bukan ESP32.
       force-close app di tengah proses. **Harapan**: proses `esptool.exe` ikut mati
       (cek Task Manager), tidak ada child process nyangkut.
 - [ ] **Tray icon & identitas saat menu terbuka**: klik kanan tray icon, screenshot
-      menu — pastikan semua teks bilang "Urban Creator CONTROL (DEV)".
+      menu — pastikan semua teks bilang "Urban Creator CONTROL" (tanpa "(DEV)").
 
 ## P3 — Localhost Backend
 
