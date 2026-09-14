@@ -359,6 +359,10 @@ function grblPopulate() {
     // the firmware itself.
     syncMachineProfileCheckbox();
 
+    // P8: same ground-truth-from-firmware pattern for the ATC toggle - see
+    // syncATCButton() below.
+    syncATCButton();
+
     populateRestoreMenu();
   }
 
@@ -846,4 +850,73 @@ function syncMachineProfileCheckbox() {
   var isLaser = parseFloat(grblParams['$32']) == 1;
   $('#simpleprofile_laser').prop('checked', isLaser);
   $('#simpleprofile_router').prop('checked', !isLaser);
+  // P8: same read, extended to also sync the Machine Control screen's own
+  // Router/Laser buttons (see toggleMachineProfile() below) - one function,
+  // one read of $32, so the Grbl Settings radio and the Machine Control
+  // buttons can never disagree with each other.
+  $('#routerToggleBtn').toggleClass('toggle-btn-on', !isLaser);
+  $('#laserToggleBtn').toggleClass('toggle-btn-on', isLaser);
+}
+
+// P8: Router/Laser profile buttons on the Machine Control screen - same
+// optimistic-click + $$ -> ground-truth-sync pattern as toggleATC(), but
+// deliberately NOT unified into one shared function with it: they send a
+// different shape of command (two settings, not one; a fixed pair of
+// values per direction, not a single on/off flip) and there's no benefit
+// to forcing them through common code just because both happen to be
+// "P8 toggle buttons". Sends immediately, exactly like clicking the radio
+// in Grbl Settings > Basic Settings does NOT do (that one only stages the
+// values into the settings table - see selectMachine() in
+// grbl-settings-defaults.js for that older, separate flow, which is left
+// completely untouched here).
+function toggleMachineProfile(type) {
+  if (type == 'laser') {
+    sendGcode('$32=1');
+    sendGcode('$44=0');
+  } else {
+    sendGcode('$32=0');
+    sendGcode('$44=4');
+  }
+  // Optimistic immediate UI feedback - corrected by syncMachineProfileCheckbox()
+  // the moment the $$ refresh below comes back.
+  $('#routerToggleBtn').toggleClass('toggle-btn-on', type != 'laser');
+  $('#laserToggleBtn').toggleClass('toggle-btn-on', type == 'laser');
+  setTimeout(function() {
+    sendGcode('$$');
+  }, 300);
+}
+
+// P8: Automatic Tool Change toggle ($341 - confirmed against the real GRBL
+// Mythos UC-100 firmware source: TOOL_CHANGE_MODE_DISABLED=0,
+// TOOL_CHANGE_MODE_AUTO=3). Same optimistic-click + ground-truth-sync split
+// as the Router/Laser fix above:
+// - setATCButtonState() is the optimistic, immediate visual update fired
+//   right on click (mirrors setMachineButton()) - it never reads grblParams.
+// - syncATCButton() is the single source of truth, always derived from the
+//   firmware's actual $341 (mirrors syncMachineProfileCheckbox()) - called
+//   whenever a real $$ dump comes in, so it self-corrects if the optimistic
+//   guess above was ever wrong.
+function setATCButtonState(isOn) {
+  // P8: solid orange fill (see the shared .toggle-btn-on rule in
+  // app/css/main.css) rather than just an orange border - a border alone
+  // wasn't distinct enough from the OFF state to read as "on" at a glance.
+  $('#atcToggleBtn').toggleClass('toggle-btn-on', isOn);
+  $('#atcStatusText').html('ATC: ' + (isOn ? 'ON' : 'OFF'));
+}
+
+function toggleATC() {
+  var turningOn = !(parseFloat(grblParams['$341']) == 3);
+  sendGcode('$341=' + (turningOn ? 3 : 0));
+  setATCButtonState(turningOn);
+  // $341=... alone (unlike grblSaveSettings()) doesn't trigger a $$ refresh
+  // on its own - request one so grblParams (and syncATCButton() via
+  // grblSettings()) picks up the firmware's real, confirmed value shortly
+  // after, rather than trusting the optimistic guess above indefinitely.
+  setTimeout(function() {
+    sendGcode('$$');
+  }, 300);
+}
+
+function syncATCButton() {
+  setATCButtonState(parseFloat(grblParams['$341']) == 3);
 }

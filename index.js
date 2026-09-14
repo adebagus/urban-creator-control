@@ -3302,10 +3302,20 @@ if (isElectron()) {
     })
     // Create myWindow, load the rest of the app, etc...
     electronApp.on('ready', () => {
-      if (process.platform == 'win32') {
+      // P8: Windows auto-starts this app at login (see setLoginItemSettings
+      // below) - if it were shown every boot, that'd be an unwanted popup on
+      // every login, hence the historical "sit in Tray" default. But that
+      // same default was also silently applying to a user deliberately
+      // opening the app from the Start Menu/desktop shortcut, which is
+      // confusing for anyone who doesn't already know to look in the tray.
+      // wasOpenedAtLogin distinguishes the two: true only when Windows
+      // itself launched the app at boot via the login item, not when a
+      // human launched it directly - so only THAT case still starts hidden.
+      var openedAtLogin = process.platform == 'win32' && electronApp.getLoginItemSettings().wasOpenedAtLogin;
+      if (openedAtLogin) {
         // Don't show window - sit in Tray
       } else {
-        showJogWindow() // Macos and Linux - launch GUI
+        showJogWindow()
       }
     })
   }

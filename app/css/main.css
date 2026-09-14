@@ -272,6 +272,22 @@ select {
   background-color: #fa6800 !important;
 }
 
+/* P8: shared "toggle button is ON" state - a plain orange border (the
+   default .button accent above) wasn't visually distinct enough from OFF,
+   so ON gets a solid orange fill with white icon/text instead. OFF is left
+   as a plain .button (light gray). Reused by the ATC toggle and the
+   Router/Laser profile buttons - one shared visual so they can never look
+   inconsistent with each other. */
+.toggle-btn-on {
+  background-color: #fa6800 !important;
+  border-color: #fa6800 !important;
+  color: #fff !important;
+}
+
+.toggle-btn-on .icon {
+  color: #fff !important;
+}
+
 .keyboardpanel td:nth-child(1) {
   width: 60px;
   height: 60px;

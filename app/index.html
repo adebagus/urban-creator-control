@@ -902,6 +902,23 @@
 
                     <tr>
                       <td colspan="3" class="border-top bd-gray pt-4" style="text-align: center;">
+                        <button class="button light jogbtn mr-2" id="routerToggleBtn" onclick="toggleMachineProfile('router')" style="width: 70px;" data-role="ripple" data-ripple-color="#fa6800" title="Switch to Router profile: sends $32=0 (Laser mode OFF) and $44=4 (homing cycle 1 = Z only) immediately - no separate Save to Firmware needed.">
+                          <span class="fas fa-fw fa-toolbox icon"></span>Router
+                        </button>
+                        <button class="button light jogbtn" id="laserToggleBtn" onclick="toggleMachineProfile('laser')" style="width: 70px;" data-role="ripple" data-ripple-color="#fa6800" title="Switch to Laser profile: sends $32=1 (Laser mode ON) and $44=0 (disable homing cycle 1) immediately - no separate Save to Firmware needed.">
+                          <span class="fas fa-fw fa-bolt icon"></span>Laser
+                        </button>
+                      </td>
+                    </tr>
+
+                    <tr>
+                      <td colspan="3" class="border-top bd-gray pt-4" style="text-align: center;">
+                        <div class="mr-2" style="display: inline-flex; flex-direction: column; align-items: center; vertical-align: top;">
+                          <button class="button light jogbtn" id="atcToggleBtn" onclick="toggleATC()" style="width: 70px;" data-role="ripple" data-ripple-color="#fa6800" title="Toggle Automatic Tool Change ($341): ON sends $341=3 (TOOL_CHANGE_MODE_AUTO), OFF sends $341=0 (TOOL_CHANGE_MODE_DISABLED).">
+                            <span class="fas fa-fw fa-exchange-alt icon" id="atcToggleIcon"></span>ATC
+                          </button>
+                          <div class="text-small mt-1" id="atcStatusText" style="font-weight: bold;">ATC: OFF</div>
+                        </div>
                         <button class="button light jogbtn mr-2" onclick="sendGcode('$TLS')" style="width: 70px;" data-role="ripple" data-ripple-color="#fa6800" title="Set Toolsetter ($TLS): jog to your toolsetter first, then click - firmware captures the current X/Y/Z as the toolsetter reference for automatic tool change.">
                           <span class="fas fa-fw fa-bullseye icon fg-orange"></span>TLS
                         </button>
