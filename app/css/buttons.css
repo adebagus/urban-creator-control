@@ -1,7 +1,11 @@
 /* X-Large button for Metro */
+/* P8: shrunk from 75px to give #renderArea (3D View) more vertical room -
+   only used by the 14 jog-grid buttons in app/index.html (8 directions +
+   4 diagonals + 2 pen up/down), confirmed via grep - still well above the
+   ~44-48px minimum comfortable touch-target size. */
 .button.cycle.xlarge, .button.square.xlarge {
-  width: 75px;
-  height: 75px;
+  width: 64px;
+  height: 64px;
 }
 
 .button.xlarge {
@@ -18,6 +22,19 @@
 
 .drotable button, .dro {
   border: 1px solid lightgray;
+}
+
+/* P8: shrink the DRO column's own buttons (setzero/gotozero, Router/Laser,
+   ATC/TLS/TCZ - all .jogbtn inside .drotable, no inline height of their
+   own) from Metro4's default 36px down to 30px, to give #renderArea (3D
+   View) more vertical room. Deliberately scoped to .drotable (not a
+   global .button/.jogbtn change) so nothing outside this column is
+   affected. No !important, so the 0.1/1/10/100mm/CONTINUOUS JOG buttons -
+   which already set their own inline height (25px/30px) - are correctly
+   left alone; inline style always wins over an external class rule. */
+.drotable button.jogbtn {
+  height: 30px;
+  line-height: 28px;
 }
 
 .jogtable button {
