@@ -296,26 +296,35 @@ select {
   color: #fff !important;
 }
 
-/* P8: CONTINUOUS JOG button - deliberately NOT left blended in with the
-   plain gray of the 4 fixed-distance buttons above it (0.1/1/10/100mm),
-   since it's a distinct mode switch, not a 5th peer choice. Solid green
-   by default (#60a917 - Metro4's own .button.success green, already used
-   elsewhere in this app for "on"/active states, e.g. the Laser Mode
-   Enabled badge), solid orange (.toggle-btn-on, same as ATC/Router/Laser)
-   once selected - #distCONT.toggle-btn-on below wins over the plain
-   #distCONT rule because an ID+class selector is more specific than a
-   bare ID selector. */
-#distCONT {
-  background-color: #60a917 !important;
-  border-color: #60a917 !important;
+/* P8: the 0.1/1/10/100mm and CONTINUOUS JOG labels use Metro4's global
+   .fg-gray (#bebebe) for their unselected/OFF text - quite pale/low-
+   contrast. Darken it a bit here WITHOUT going full black (#4a4e51, the
+   same dark gray already used for the .toggle switch elsewhere in this
+   app). Scoped to just these labels (compound selector, needs BOTH
+   classes) rather than editing .fg-gray itself, which is a generic
+   Metro4 utility used in many unrelated places across the app. */
+.jogdistXYZ.fg-gray,
+#distCONTlabel.fg-gray {
+  color: #4a4e51 !important;
 }
 
+/* P8: CONTINUOUS JOG button - OFF state deliberately left as plain
+   .button.light (no override here), same neutral gray/white-with-border
+   look as ATC/Router/Laser's own OFF state (green read as "already
+   active" before a click, which was confusing). ON state still solid
+   orange (.toggle-btn-on, same as ATC/Router/Laser). */
 #distCONT.toggle-btn-on {
   background-color: #fa6800 !important;
   border-color: #fa6800 !important;
 }
 
-#distCONTlabel {
+/* highlightJogDistanceButton() adds .fg-orange to #distCONTlabel on
+   select, same as it does for the 0.1/1/10/100mm labels - fine for those
+   (orange text on their plain gray background), but here the BUTTON
+   itself also turns solid orange, so that would be orange-on-orange.
+   Force white specifically in that combination; OFF keeps its
+   JS-assigned .fg-gray as-is, same as the other distance buttons. */
+#distCONT.toggle-btn-on #distCONTlabel {
   color: #fff !important;
 }
 
