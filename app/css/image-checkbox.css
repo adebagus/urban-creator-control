@@ -65,8 +65,14 @@
 }
 
 /* P6: Font Awesome icon variant of the same toggle, sized to match the
-   64x64 <img> icons above so it lines up with them in the same row. */
-.image-checkbox-ul label i {
+   64x64 <img> icons above so it lines up with them in the same row.
+   P8 fix: this used to select by bare tag name (`label i`), which stopped
+   matching once FontAwesome5's "SVG with JS" mode replaced the <i> element
+   with an <svg> at runtime (FA preserves the original element's classes
+   onto that <svg>, but not its tag name) - so this sizing/centering never
+   applied, and the checked-state scale(0.9) below never fired either.
+   Hooking off an explicit class instead of the tag survives that swap. */
+.image-checkbox-ul label .image-checkbox-icon {
   display: block;
   height: 64px;
   width: 64px;
@@ -93,6 +99,10 @@
   z-index: -1;
 }
 
-.image-checkbox-ul :checked+label i {
+.image-checkbox-ul :checked+label .image-checkbox-icon {
   transform: scale(0.9);
+  /* P8 fix: mirrors the `:checked+label img` rule above, which pushes the
+     image behind the checkmark badge on check - the icon variant never had
+     this, so the badge could end up covered instead of clearly on top. */
+  z-index: -1;
 }

@@ -567,9 +567,62 @@ function fixRenderSize() {
 
 }
 
+// P8 fix: app/css/main.css used to size #renderArea/#macros/#console/
+// #editor/#fluidnceditor with a hardcoded `calc(100vh - Npx)` - a fixed
+// pixel offset assuming a fixed amount of content sits above them. That
+// assumption broke the moment the jog-controls column (DRO table, Router/
+// Laser/ATC/TLS/TCZ buttons, etc.) grew taller than it was when that
+// number was picked, since the offset never adjusted - the panels ended
+// up taller than the space actually left, so their bottom got clipped.
+// The CSS comments claimed this got "set by websocket.js" after connecting,
+// but no such code exists (setJogPanel() in ui.js had the equivalent lines,
+// all commented out - same class of stale-comment bug already fixed once
+// for #jogcontrols in P7).
+//
+// Fix: measure each panel's REAL position and size it to exactly fill the
+// remaining window height, instead of trusting a fixed number. Re-run
+// this whenever the window resizes AND whenever #jogcontrols itself
+// changes height for any reason (via ResizeObserver) - not just on the
+// two triggers (window resize, clicking the 3D View tab) that used to be
+// the only things that reshaped these panels at all.
+var CONTROL_PANEL_BOTTOM_MARGIN = 20;
+var CONTROL_PANEL_IDS = ['renderArea', 'macros', 'console', 'editor', 'fluidnceditor'];
+
+function resizeControlPanels() {
+  CONTROL_PANEL_IDS.forEach(function(id) {
+    var el = document.getElementById(id);
+    // offsetParent is null for display:none elements (e.g. the inactive
+    // tab panels, or #fluidnceditor when not connected to FluidNC) - skip
+    // those rather than sizing something nobody can see right now; they
+    // get measured correctly the moment they're actually shown/resized.
+    if (!el || el.offsetParent === null) return;
+    var top = el.getBoundingClientRect().top;
+    var newHeight = window.innerHeight - top - CONTROL_PANEL_BOTTOM_MARGIN;
+    if (newHeight > 0) {
+      el.style.height = newHeight + 'px';
+    }
+  });
+  if (typeof editor !== 'undefined' && editor) {
+    editor.resize();
+  }
+  fixRenderSize();
+}
+
 $(window).on('resize', function() {
   console.log("Window Resize")
-  fixRenderSize();
+  resizeControlPanels();
+});
+
+$(document).ready(function() {
+  resizeControlPanels();
+  if (typeof ResizeObserver !== 'undefined') {
+    var jogControlsEl = document.getElementById('jogcontrols');
+    if (jogControlsEl) {
+      new ResizeObserver(function() {
+        resizeControlPanels();
+      }).observe(jogControlsEl);
+    }
+  }
 });
 
 function resetView(object) {

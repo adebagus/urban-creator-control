@@ -251,12 +251,12 @@ function grblPopulate() {
             <ul class="image-checkbox-ul">
               <li>
                 <input type="checkbox" name="hardlimits" id="hardlimitsenabled" value="hardlimits">
-                <label for="hardlimitsenabled"><i class="fas fa-shield-alt"></i></label>
+                <label for="hardlimitsenabled"><i class="fas fa-shield-alt image-checkbox-icon"></i></label>
                 <div class="image-checkbox-text">Hard Limits ($21)</div>
               </li>
               <li>
                 <input type="checkbox" name="homing" id="homingenabled" value="homing">
-                <label for="homingenabled"><i class="fas fa-home"></i></label>
+                <label for="homingenabled"><i class="fas fa-home image-checkbox-icon"></i></label>
                 <div class="image-checkbox-text">Homing ($22)</div>
               </li>
             </ul>
@@ -344,7 +344,11 @@ function grblPopulate() {
 
     // P6: Hard Limits ($21) and Homing ($22) are independent toggles now,
     // no longer coupled together under one "limits installed" checkbox.
-    syncHardLimitAndHomingCheckboxes();
+    // P8 fix: was syncHardLimitAndHomingCheckboxes() (reads the not-yet-
+    // hydrated #val-21-input) - see syncHardLimitAndHomingFromFirmware()
+    // for why this needed to be a separate function reading grblParams
+    // directly instead.
+    syncHardLimitAndHomingFromFirmware();
     if (grblParams['$22'] > 0) {
       $('#gotozeroMPos').removeClass('disabled')
       $('#homeBtn').attr('disabled', false)
@@ -838,6 +842,29 @@ function toggleHoming() {
 function syncHardLimitAndHomingCheckboxes() {
   $('#hardlimitsenabled:checkbox').prop('checked', parseFloat($("#val-21-input").val()) == 1);
   $('#homingenabled:checkbox').prop('checked', parseFloat($("#val-22-input").val()) > 0);
+}
+
+// P8 fix: single source of truth for these two checkboxes when reflecting
+// the CONNECTED firmware's real state - always derived from grblParams
+// ($21/$22 from a real $$ dump), same pattern as syncMachineProfileCheckbox()
+// below. Deliberately a separate function from syncHardLimitAndHomingCheckboxes()
+// above, not a rewrite of it: that one is used after loading a settings
+// BACKUP FILE, where #val-21-input/#val-22-input hold the file's own values
+// (not yet the connected firmware's) and must stay the source - reading
+// grblParams there would show the wrong thing (live firmware state instead
+// of the file being previewed for restore).
+//
+// This one exists because grblPopulate() rebuilds the whole settings
+// template (including #val-21-input) and only hydrates it from grblParams
+// via setup_settings_table() 100ms later (grbl-settings.js:337-339) - but
+// syncHardLimitAndHomingCheckboxes() used to be called immediately, so it
+// always read #val-21-input before that hydration ran, i.e. always got the
+// checkbox wrong right after any refresh (confirmed via real hardware
+// testing: Save to Firmware -> Reset Grbl -> the badge disappeared even
+// though $21/$22 were still correctly saved).
+function syncHardLimitAndHomingFromFirmware() {
+  $('#hardlimitsenabled:checkbox').prop('checked', parseFloat(grblParams['$21']) == 1);
+  $('#homingenabled:checkbox').prop('checked', parseFloat(grblParams['$22']) > 0);
 }
 
 // P8: single source of truth for the Router/Laser radio checkmark - always

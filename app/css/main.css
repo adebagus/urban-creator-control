@@ -43,8 +43,14 @@ body {
 }
 
 #macros {
-  /* Note only uses height attribs from here, before we connect to websocket. After that, it gets set by websocket.js */
-  height: calc(100vh - 495px);
+  /* P8 fix: this used to be a hardcoded `calc(100vh - 495px)` - a fixed
+     offset that went stale the moment content above it (the jog-controls
+     DRO column) grew taller, clipping this panel. app/js/viewer.js now
+     measures the real available space and sets an inline height on load,
+     on window resize, and whenever the DRO column itself resizes (see
+     resizeControlPanels() there) - min-height here is just a sane floor
+     for the brief instant before that JS runs. */
+  min-height: 300px;
   width: 100%;
   border-top: 1px solid #ccc;
   /* margin-top: 5px; */
@@ -53,8 +59,8 @@ body {
 }
 
 #renderArea {
-  /* Note only uses height attribs from here, before we connect to websocket. After that, it gets set by websocket.js */
-  height: calc(100vh - 495px);
+  /* See #macros above - same fix, same reasoning. */
+  min-height: 300px;
   width: 100%;
   border-top: 1px solid #ccc;
   /* margin-top: 5px; */
@@ -63,8 +69,8 @@ body {
 }
 
 #editor {
-  /* Note only uses height attribs from here, before we connect to websocket. After that, it gets set by websocket.js */
-  height: calc(100vh - 535px);
+  /* See #macros above - same fix, same reasoning. */
+  min-height: 300px;
   width: 100%;
   border-top: 1px solid #ccc;
   /* margin-top: 5px; */
@@ -72,8 +78,8 @@ body {
 }
 
 #fluidnceditor {
-  /* Note only uses height attribs from here, before we connect to websocket. After that, it gets set by websocket.js */
-  height: calc(100vh - 235px);
+  /* See #macros above - same fix, same reasoning. */
+  min-height: 300px;
   width: 100%;
   border-top: 1px solid #ccc;
   /* margin-top: 5px; */
@@ -91,7 +97,9 @@ body {
 #console {
   /*font-family: "Courier New", Courier, monospace;*/
   font-family: "Lucida Console", Monaco, monospace;
-  height: calc(100vh - 535px);
+  /* P8 fix: see #macros above - same hardcoded-offset bug, same fix
+     (resizeControlPanels() in app/js/viewer.js sets the real height). */
+  min-height: 300px;
   width: 100%;
   overflow-y: auto;
   overflow-x: none;
