@@ -296,6 +296,29 @@ select {
   color: #fff !important;
 }
 
+/* P8: CONTINUOUS JOG button - deliberately NOT left blended in with the
+   plain gray of the 4 fixed-distance buttons above it (0.1/1/10/100mm),
+   since it's a distinct mode switch, not a 5th peer choice. Solid green
+   by default (#60a917 - Metro4's own .button.success green, already used
+   elsewhere in this app for "on"/active states, e.g. the Laser Mode
+   Enabled badge), solid orange (.toggle-btn-on, same as ATC/Router/Laser)
+   once selected - #distCONT.toggle-btn-on below wins over the plain
+   #distCONT rule because an ID+class selector is more specific than a
+   bare ID selector. */
+#distCONT {
+  background-color: #60a917 !important;
+  border-color: #60a917 !important;
+}
+
+#distCONT.toggle-btn-on {
+  background-color: #fa6800 !important;
+  border-color: #fa6800 !important;
+}
+
+#distCONTlabel {
+  color: #fff !important;
+}
+
 .keyboardpanel td:nth-child(1) {
   width: 60px;
   height: 60px;

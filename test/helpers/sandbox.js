@@ -41,6 +41,13 @@ function createJqueryStub() {
         record(selector, 'removeClass', [c]);
         return api;
       },
+      toggleClass(c, force) {
+        // Only the two-arg "force" form is used anywhere in app code so
+        // far (toggleClass('x', someBoolean)) - no-arg auto-toggle isn't
+        // implemented since nothing needs it yet.
+        record(selector, 'toggleClass', [c, force]);
+        return api;
+      },
       is() {
         return false;
       },

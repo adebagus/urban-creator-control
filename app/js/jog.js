@@ -32,6 +32,13 @@ function highlightJogDistanceButton(id) {
   $('#distCONTlabel').removeClass('fg-orange').addClass('fg-gray');
   $('#' + id).addClass('bd-orange');
   $('#' + id + 'label').removeClass('fg-gray').addClass('fg-orange');
+
+  // P8: CONTINUOUS JOG gets its own solid green/orange treatment (see
+  // #distCONT in app/css/main.css) instead of the gray/orange-border scheme
+  // above, so it reads as a distinct mode switch rather than blending in
+  // with the 0.1/1/10/100mm buttons. Reuses .toggle-btn-on, the same class
+  // ATC/Router/Laser use for their own active-state solid orange.
+  $('#distCONT').toggleClass('toggle-btn-on', id == 'distCONT');
 }
 
 // Maps the CURRENT jogdistXYZ number (mm or inch) back to the button id that
@@ -181,33 +188,6 @@ function cancelJog() {
   continuousJogRunning = false;
 }
 
-// P8 (gSender-inspired tap-vs-hold): holding a fixed-distance jog button
-// (0.1/1/10/100mm - NOT the CONT toggle, which is already continuous from
-// the very first mousedown and is untouched by any of this) past this
-// threshold without releasing upgrades the jog to a continuous move, same
-// as CONT mode's mousedown, layered on top of the incremental move that
-// was already sent instantly at mousedown. A quick tap always clears this
-// timer well before it fires, so normal tap-tap-tap jogging keeps the
-// exact same feel/latency as before - only a genuine hold triggers the
-// upgrade.
-var HOLD_TO_CONTINUOUS_MS = 300;
-var holdUpgradeTimer = null;
-
-function startHoldUpgradeTimer(startContinuousFn) {
-  clearHoldUpgradeTimer();
-  holdUpgradeTimer = setTimeout(function() {
-    holdUpgradeTimer = null;
-    startContinuousFn();
-  }, HOLD_TO_CONTINUOUS_MS);
-}
-
-function clearHoldUpgradeTimer() {
-  if (holdUpgradeTimer) {
-    clearTimeout(holdUpgradeTimer);
-    holdUpgradeTimer = null;
-  }
-}
-
 
 $(document).ready(function() {
 
@@ -246,13 +226,10 @@ $(document).ready(function() {
   }).mouseup(function(e) {
     safeToUpdateSliders = true;
     // Added to cancel Jog moves even when user moved the mouse off the button before releasing
-    // P8: was gated on allowContinuousJog (true only in CONT mode) - now
-    // gated on continuousJogRunning instead, so a hold-upgraded continuous
-    // jog (started while in a fixed-distance mode) also gets cancelled here
-    // if the mouse was dragged off the button before release.
-    clearHoldUpgradeTimer();
-    if (continuousJogRunning) {
-      cancelJog()
+    if (allowContinuousJog) {
+      if (continuousJogRunning) {
+        cancelJog()
+      }
     }
   }).mouseleave(function(e) {
     safeToUpdateSliders = true;
@@ -513,51 +490,13 @@ $(document).ready(function() {
       }
     } else {
       jog('X', '-' + jogdistXYZ, jogRateX);
-      startHoldUpgradeTimer(function() {
-        // P8 fix: the original continuous-mode check requires "Idle" because
-        // it's evaluated at the moment of a fresh mousedown, when nothing is
-        // moving yet. Here, 300ms after OUR OWN incremental move was sent,
-        // the machine is very likely still executing it - GRBL correctly
-        // reports "Jog" at that point, not "Idle". Requiring "Idle" here
-        // made the hold-upgrade block itself on its own in-flight move
-        // (confirmed via manual hardware testing: held past 300ms with a
-        // slow/long incremental move never upgraded). "Jog" must be
-        // explicitly allowed; genuinely blocking states (Alarm/Hold/Run/
-        // Door open/Home/Sleep) are still excluded since they're not in
-        // this list.
-        if (!waitingForStatus && (laststatus.comms.runStatus == "Idle" || laststatus.comms.runStatus == "Jog" || laststatus.comms.runStatus == "Door:0")) {
-          var hasSoftLimits = false;
-          if (Object.keys(grblParams).length > 0) {
-            if (parseInt(grblParams.$20) == 1) {
-              hasSoftLimits = true;
-            }
-          }
-          var direction = "X-";
-          var distance = 1000;
-          if (hasSoftLimits) {
-            var mindistance = parseInt(grblParams.$130)
-            var maxdistance = 0; // Grbl all negative coordinates
-            distance = (mindistance + (parseFloat(laststatus.machine.position.offset.x) + parseFloat(laststatus.machine.position.work.x))) - 1
-            distance = distance.toFixed(3);
-            if (distance < 1) {
-              toastJogWillHit("X-");
-            }
-          }
-          if (distance >= 1) {
-            socket.emit('runCommand', "$J=G91 G21 " + direction + distance + " F" + jogRateX + "\n");
-            continuousJogRunning = true;
-            waitingForStatus = true;
-          }
-        }
-      });
     }
     $('#runNewProbeBtn').addClass("disabled")
     $('#confirmNewProbeBtn').removeClass("disabled")
   });
   $('.xM').on('touchend mouseup', function(ev) {
     ev.preventDefault();
-    clearHoldUpgradeTimer();
-    if (continuousJogRunning) {
+    if (allowContinuousJog) {
       cancelJog()
     }
   });
@@ -600,43 +539,6 @@ $(document).ready(function() {
       }
     } else {
       jog('X', jogdistXYZ, jogRateX);
-      startHoldUpgradeTimer(function() {
-        // P8 fix: the original continuous-mode check requires "Idle" because
-        // it's evaluated at the moment of a fresh mousedown, when nothing is
-        // moving yet. Here, 300ms after OUR OWN incremental move was sent,
-        // the machine is very likely still executing it - GRBL correctly
-        // reports "Jog" at that point, not "Idle". Requiring "Idle" here
-        // made the hold-upgrade block itself on its own in-flight move
-        // (confirmed via manual hardware testing: held past 300ms with a
-        // slow/long incremental move never upgraded). "Jog" must be
-        // explicitly allowed; genuinely blocking states (Alarm/Hold/Run/
-        // Door open/Home/Sleep) are still excluded since they're not in
-        // this list.
-        if (!waitingForStatus && (laststatus.comms.runStatus == "Idle" || laststatus.comms.runStatus == "Jog" || laststatus.comms.runStatus == "Door:0")) {
-          var hasSoftLimits = false;
-          if (Object.keys(grblParams).length > 0) {
-            if (parseInt(grblParams.$20) == 1) {
-              hasSoftLimits = true;
-            }
-          }
-          var direction = "X";
-          var distance = 1000;
-          if (hasSoftLimits) {
-            var mindistance = parseInt(grblParams.$130)
-            var maxdistance = 0; // Grbl all negative coordinates
-            distance = (maxdistance - (parseFloat(laststatus.machine.position.offset.x) + parseFloat(laststatus.machine.position.work.x))) - 1
-            distance = distance.toFixed(3);
-            if (distance < 1) {
-              toastJogWillHit("X+");
-            }
-          }
-          if (distance >= 1) {
-            socket.emit('runCommand', "$J=G91 G21 " + direction + distance + " F" + jogRateX + "\n");
-            continuousJogRunning = true;
-            waitingForStatus = true;
-          }
-        }
-      });
     }
     $('#runNewProbeBtn').addClass("disabled")
     $('#confirmNewProbeBtn').removeClass("disabled")
@@ -644,8 +546,7 @@ $(document).ready(function() {
   $('.xP').on('touchend mouseup', function(ev) {
     // console.log("xp up")
     ev.preventDefault();
-    clearHoldUpgradeTimer();
-    if (continuousJogRunning) {
+    if (allowContinuousJog) {
       cancelJog()
     }
   });
@@ -689,51 +590,13 @@ $(document).ready(function() {
       }
     } else {
       jog('Y', '-' + jogdistXYZ, jogRateY);
-      startHoldUpgradeTimer(function() {
-        // P8 fix: the original continuous-mode check requires "Idle" because
-        // it's evaluated at the moment of a fresh mousedown, when nothing is
-        // moving yet. Here, 300ms after OUR OWN incremental move was sent,
-        // the machine is very likely still executing it - GRBL correctly
-        // reports "Jog" at that point, not "Idle". Requiring "Idle" here
-        // made the hold-upgrade block itself on its own in-flight move
-        // (confirmed via manual hardware testing: held past 300ms with a
-        // slow/long incremental move never upgraded). "Jog" must be
-        // explicitly allowed; genuinely blocking states (Alarm/Hold/Run/
-        // Door open/Home/Sleep) are still excluded since they're not in
-        // this list.
-        if (!waitingForStatus && (laststatus.comms.runStatus == "Idle" || laststatus.comms.runStatus == "Jog" || laststatus.comms.runStatus == "Door:0")) {
-          var hasSoftLimits = false;
-          if (Object.keys(grblParams).length > 0) {
-            if (parseInt(grblParams.$20) == 1) {
-              hasSoftLimits = true;
-            }
-          }
-          var direction = "Y-";
-          var distance = 1000;
-          if (hasSoftLimits) {
-            var mindistance = parseInt(grblParams.$131)
-            var maxdistance = 0; // Grbl all negative coordinates
-            distance = (mindistance + (parseFloat(laststatus.machine.position.offset.y) + parseFloat(laststatus.machine.position.work.y))) - 1
-            distance = distance.toFixed(3);
-            if (distance < 1) {
-              toastJogWillHit("Y-");
-            }
-          }
-          if (distance >= 1) {
-            socket.emit('runCommand', "$J=G91 G21 " + direction + distance + " F" + jogRateY + "\n");
-            continuousJogRunning = true;
-            waitingForStatus = true;
-          }
-        }
-      });
     }
     $('#runNewProbeBtn').addClass("disabled")
     $('#confirmNewProbeBtn').removeClass("disabled")
   });
   $('.yM').on('touchend mouseup', function(ev) {
     ev.preventDefault();
-    clearHoldUpgradeTimer();
-    if (continuousJogRunning) {
+    if (allowContinuousJog) {
       cancelJog()
     }
   });
@@ -777,51 +640,13 @@ $(document).ready(function() {
       }
     } else {
       jog('Y', jogdistXYZ, jogRateY);
-      startHoldUpgradeTimer(function() {
-        // P8 fix: the original continuous-mode check requires "Idle" because
-        // it's evaluated at the moment of a fresh mousedown, when nothing is
-        // moving yet. Here, 300ms after OUR OWN incremental move was sent,
-        // the machine is very likely still executing it - GRBL correctly
-        // reports "Jog" at that point, not "Idle". Requiring "Idle" here
-        // made the hold-upgrade block itself on its own in-flight move
-        // (confirmed via manual hardware testing: held past 300ms with a
-        // slow/long incremental move never upgraded). "Jog" must be
-        // explicitly allowed; genuinely blocking states (Alarm/Hold/Run/
-        // Door open/Home/Sleep) are still excluded since they're not in
-        // this list.
-        if (!waitingForStatus && (laststatus.comms.runStatus == "Idle" || laststatus.comms.runStatus == "Jog" || laststatus.comms.runStatus == "Door:0")) {
-          var hasSoftLimits = false;
-          if (Object.keys(grblParams).length > 0) {
-            if (parseInt(grblParams.$20) == 1) {
-              hasSoftLimits = true;
-            }
-          }
-          var direction = "Y";
-          var distance = 1000;
-          if (hasSoftLimits) {
-            var mindistance = parseInt(grblParams.$131)
-            var maxdistance = 0; // Grbl all negative coordinates
-            distance = (maxdistance - (parseFloat(laststatus.machine.position.offset.y) + parseFloat(laststatus.machine.position.work.y))) - 1
-            distance = distance.toFixed(3);
-            if (distance < 1) {
-              toastJogWillHit("Y+");
-            }
-          }
-          if (distance >= 1) {
-            socket.emit('runCommand', "$J=G91 G21 " + direction + distance + " F" + jogRateY + "\n");
-            continuousJogRunning = true;
-            waitingForStatus = true;
-          }
-        }
-      });
     }
     $('#runNewProbeBtn').addClass("disabled")
     $('#confirmNewProbeBtn').removeClass("disabled")
   });
   $('.yP').on('touchend mouseup', function(ev) {
     ev.preventDefault();
-    clearHoldUpgradeTimer();
-    if (continuousJogRunning) {
+    if (allowContinuousJog) {
       cancelJog()
     }
   });
@@ -865,51 +690,13 @@ $(document).ready(function() {
       }
     } else {
       jog('Z', '-' + jogdistXYZ, jogRateZ);
-      startHoldUpgradeTimer(function() {
-        // P8 fix: the original continuous-mode check requires "Idle" because
-        // it's evaluated at the moment of a fresh mousedown, when nothing is
-        // moving yet. Here, 300ms after OUR OWN incremental move was sent,
-        // the machine is very likely still executing it - GRBL correctly
-        // reports "Jog" at that point, not "Idle". Requiring "Idle" here
-        // made the hold-upgrade block itself on its own in-flight move
-        // (confirmed via manual hardware testing: held past 300ms with a
-        // slow/long incremental move never upgraded). "Jog" must be
-        // explicitly allowed; genuinely blocking states (Alarm/Hold/Run/
-        // Door open/Home/Sleep) are still excluded since they're not in
-        // this list.
-        if (!waitingForStatus && (laststatus.comms.runStatus == "Idle" || laststatus.comms.runStatus == "Jog" || laststatus.comms.runStatus == "Door:0")) {
-          var hasSoftLimits = false;
-          if (Object.keys(grblParams).length > 0) {
-            if (parseInt(grblParams.$20) == 1) {
-              hasSoftLimits = true;
-            }
-          }
-          var direction = "Z-";
-          var distance = 1000;
-          if (hasSoftLimits) {
-            var mindistance = parseInt(grblParams.$132)
-            var maxdistance = 0; // Grbl all negative coordinates
-            distance = (mindistance + (parseFloat(laststatus.machine.position.offset.z) + parseFloat(laststatus.machine.position.work.z))) - 1
-            distance = distance.toFixed(3);
-            if (distance < 1) {
-              toastJogWillHit("Z-");
-            }
-          }
-          if (distance >= 1) {
-            socket.emit('runCommand', "$J=G91 G21 " + direction + distance + " F" + jogRateZ + "\n");
-            continuousJogRunning = true;
-            waitingForStatus = true;
-          }
-        }
-      });
     }
     $('#runNewProbeBtn').addClass("disabled")
     $('#confirmNewProbeBtn').removeClass("disabled")
   });
   $('.zM').on('touchend mouseup', function(ev) {
     ev.preventDefault();
-    clearHoldUpgradeTimer();
-    if (continuousJogRunning) {
+    if (allowContinuousJog) {
       cancelJog()
     }
   });
@@ -953,51 +740,13 @@ $(document).ready(function() {
       }
     } else {
       jog('Z', jogdistXYZ, jogRateZ);
-      startHoldUpgradeTimer(function() {
-        // P8 fix: the original continuous-mode check requires "Idle" because
-        // it's evaluated at the moment of a fresh mousedown, when nothing is
-        // moving yet. Here, 300ms after OUR OWN incremental move was sent,
-        // the machine is very likely still executing it - GRBL correctly
-        // reports "Jog" at that point, not "Idle". Requiring "Idle" here
-        // made the hold-upgrade block itself on its own in-flight move
-        // (confirmed via manual hardware testing: held past 300ms with a
-        // slow/long incremental move never upgraded). "Jog" must be
-        // explicitly allowed; genuinely blocking states (Alarm/Hold/Run/
-        // Door open/Home/Sleep) are still excluded since they're not in
-        // this list.
-        if (!waitingForStatus && (laststatus.comms.runStatus == "Idle" || laststatus.comms.runStatus == "Jog" || laststatus.comms.runStatus == "Door:0")) {
-          var hasSoftLimits = false;
-          if (Object.keys(grblParams).length > 0) {
-            if (parseInt(grblParams.$20) == 1) {
-              hasSoftLimits = true;
-            }
-          }
-          var direction = "Z";
-          var distance = 1000;
-          if (hasSoftLimits) {
-            var mindistance = parseInt(grblParams.$132)
-            var maxdistance = 0; // Grbl all negative coordinates
-            distance = (maxdistance - (parseFloat(laststatus.machine.position.offset.z) + parseFloat(laststatus.machine.position.work.z))) - 1
-            distance = distance.toFixed(3);
-            if (distance < 1) {
-              toastJogWillHit("Z+");
-            }
-          }
-          if (distance >= 1) {
-            socket.emit('runCommand', "$J=G91 G21 " + direction + distance + " F" + jogRateZ + "\n");
-            continuousJogRunning = true;
-            waitingForStatus = true;
-          }
-        }
-      });
     }
     $('#runNewProbeBtn').addClass("disabled")
     $('#confirmNewProbeBtn').removeClass("disabled")
   });
   $('.zP').on('touchend mouseup', function(ev) {
     ev.preventDefault();
-    clearHoldUpgradeTimer();
-    if (continuousJogRunning) {
+    if (allowContinuousJog) {
       cancelJog()
     }
   });
@@ -1050,51 +799,13 @@ $(document).ready(function() {
       }
     } else {
       jog('A', '-' + jogdistA, jogRateA);
-      startHoldUpgradeTimer(function() {
-        // P8 fix: the original continuous-mode check requires "Idle" because
-        // it's evaluated at the moment of a fresh mousedown, when nothing is
-        // moving yet. Here, 300ms after OUR OWN incremental move was sent,
-        // the machine is very likely still executing it - GRBL correctly
-        // reports "Jog" at that point, not "Idle". Requiring "Idle" here
-        // made the hold-upgrade block itself on its own in-flight move
-        // (confirmed via manual hardware testing: held past 300ms with a
-        // slow/long incremental move never upgraded). "Jog" must be
-        // explicitly allowed; genuinely blocking states (Alarm/Hold/Run/
-        // Door open/Home/Sleep) are still excluded since they're not in
-        // this list.
-        if (!waitingForStatus && (laststatus.comms.runStatus == "Idle" || laststatus.comms.runStatus == "Jog" || laststatus.comms.runStatus == "Door:0")) {
-          var hasSoftLimits = false;
-          if (Object.keys(grblParams).length > 0) {
-            if (parseInt(grblParams.$20) == 1) {
-              hasSoftLimits = true;
-            }
-          }
-          var direction = "A-";
-          var distance = 1000;
-          if (hasSoftLimits) {
-            var mindistance = parseInt(grblParams.$133)
-            var maxdistance = 0; // Grbl all negative coordinates
-            distance = (mindistance + (parseFloat(laststatus.machine.position.offset.a) + parseFloat(laststatus.machine.position.work.a))) - 1
-            distance = distance.toFixed(3);
-            if (distance < 1) {
-              toastJogWillHit("A-");
-            }
-          }
-          if (distance >= 1) {
-            socket.emit('runCommand', "$J=G91 G21 " + direction + distance + " F" + jogRateA + "\n");
-            continuousJogRunning = true;
-            waitingForStatus = true;
-          }
-        }
-      });
     }
     $('#runNewProbeBtn').addClass("disabled")
     $('#confirmNewProbeBtn').removeClass("disabled")
   });
   $('.aM').on('touchend mouseup', function(ev) {
     ev.preventDefault();
-    clearHoldUpgradeTimer();
-    if (continuousJogRunning) {
+    if (allowContinuousJog) {
       cancelJog()
     }
   });
@@ -1138,51 +849,13 @@ $(document).ready(function() {
       }
     } else {
       jog('A', jogdistA, jogRateA);
-      startHoldUpgradeTimer(function() {
-        // P8 fix: the original continuous-mode check requires "Idle" because
-        // it's evaluated at the moment of a fresh mousedown, when nothing is
-        // moving yet. Here, 300ms after OUR OWN incremental move was sent,
-        // the machine is very likely still executing it - GRBL correctly
-        // reports "Jog" at that point, not "Idle". Requiring "Idle" here
-        // made the hold-upgrade block itself on its own in-flight move
-        // (confirmed via manual hardware testing: held past 300ms with a
-        // slow/long incremental move never upgraded). "Jog" must be
-        // explicitly allowed; genuinely blocking states (Alarm/Hold/Run/
-        // Door open/Home/Sleep) are still excluded since they're not in
-        // this list.
-        if (!waitingForStatus && (laststatus.comms.runStatus == "Idle" || laststatus.comms.runStatus == "Jog" || laststatus.comms.runStatus == "Door:0")) {
-          var hasSoftLimits = false;
-          if (Object.keys(grblParams).length > 0) {
-            if (parseInt(grblParams.$20) == 1) {
-              hasSoftLimits = true;
-            }
-          }
-          var direction = "A";
-          var distance = 1000;
-          if (hasSoftLimits) {
-            var mindistance = parseInt(grblParams.$133)
-            var maxdistance = 0; // Grbl all negative coordinates
-            distance = (maxdistance - (parseFloat(laststatus.machine.position.offset.a) + parseFloat(laststatus.machine.position.work.a))) - 1
-            distance = distance.toFixed(3);
-            if (distance < 1) {
-              toastJogWillHit("A+");
-            }
-          }
-          if (distance >= 1) {
-            socket.emit('runCommand', "$J=G91 G21 " + direction + distance + " F" + jogRateA + "\n");
-            continuousJogRunning = true;
-            waitingForStatus = true;
-          }
-        }
-      });
     }
     $('#runNewProbeBtn').addClass("disabled")
     $('#confirmNewProbeBtn').removeClass("disabled")
   });
   $('.aP').on('touchend mouseup', function(ev) {
     ev.preventDefault();
-    clearHoldUpgradeTimer();
-    if (continuousJogRunning) {
+    if (allowContinuousJog) {
       cancelJog()
     }
   });
@@ -1330,43 +1003,13 @@ function bindDiagonalJog(selector, xSign, ySign) {
       }
     } else {
       jogXY(xSign * jogdistXYZ, ySign * jogdistXYZ, Math.min(jogRateX, jogRateY));
-      startHoldUpgradeTimer(function() {
-        // P8 fix: the original continuous-mode check requires "Idle" because
-        // it's evaluated at the moment of a fresh mousedown, when nothing is
-        // moving yet. Here, 300ms after OUR OWN incremental move was sent,
-        // the machine is very likely still executing it - GRBL correctly
-        // reports "Jog" at that point, not "Idle". Requiring "Idle" here
-        // made the hold-upgrade block itself on its own in-flight move
-        // (confirmed via manual hardware testing: held past 300ms with a
-        // slow/long incremental move never upgraded). "Jog" must be
-        // explicitly allowed; genuinely blocking states (Alarm/Hold/Run/
-        // Door open/Home/Sleep) are still excluded since they're not in
-        // this list.
-        if (!waitingForStatus && (laststatus.comms.runStatus == "Idle" || laststatus.comms.runStatus == "Jog" || laststatus.comms.runStatus == "Door:0")) {
-          var xDist = calcContinuousJogDistance('X', xSign);
-          var yDist = calcContinuousJogDistance('Y', ySign);
-          if (xDist < 1 || yDist < 1) {
-            toastJogWillHit((xSign > 0 ? "X+" : "X-") + "/" + (ySign > 0 ? "Y+" : "Y-"));
-          } else {
-            var feed = Math.min(jogRateX, jogRateY);
-            socket.emit('jogXY', {
-              x: (xSign * xDist).toFixed(3),
-              y: (ySign * yDist).toFixed(3),
-              feed: feed
-            });
-            continuousJogRunning = true;
-            waitingForStatus = true;
-          }
-        }
-      });
     }
     $('#runNewProbeBtn').addClass("disabled")
     $('#confirmNewProbeBtn').removeClass("disabled")
   });
   $(selector).on('touchend mouseup', function(ev) {
     ev.preventDefault();
-    clearHoldUpgradeTimer();
-    if (continuousJogRunning) {
+    if (allowContinuousJog) {
       cancelJog()
     }
   });
