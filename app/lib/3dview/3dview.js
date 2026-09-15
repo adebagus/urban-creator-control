@@ -152,7 +152,14 @@ function parseGcodeInWebWorker(gcode) {
       $('#3dviewicon').addClass('fa-pulse');
       $('#3dviewlabel').html(' 3D View (rendering, please wait...)')
 
-      // populateToolChanges(gcode)
+      // P8: populate the toolchanges array (used by the tool-number 3D
+      // View overlay - see updateToolNumberOverlay() in grbl-settings.js)
+      // without also triggering populateToolChanges()'s OTHER side effect
+      // of swapping #runBtn for the dormant/untested #runToolsBtn
+      // "Run Job with Toolchanges" dropdown - setupToolChanges() alone is
+      // a pure function (scans lines, returns data, no DOM changes).
+      toolchanges = setupToolChanges(gcode);
+      updateToolNumberOverlay();
     }
   }
 };

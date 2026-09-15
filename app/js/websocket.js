@@ -910,6 +910,12 @@ function initSocket() {
 
     laststatus = status;
     waitingForStatus = false;
+
+    // P8: current-tool overlay on the 3D View (only shown while ATC is
+    // ON) - see updateToolNumberOverlay() in grbl-settings.js.
+    if (typeof updateToolNumberOverlay === 'function') {
+      updateToolNumberOverlay();
+    }
   });
 
   socket.on('features', function(data) {

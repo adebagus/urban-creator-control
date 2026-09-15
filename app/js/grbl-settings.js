@@ -929,6 +929,55 @@ function setATCButtonState(isOn) {
   // wasn't distinct enough from the OFF state to read as "on" at a glance.
   $('#atcToggleBtn').toggleClass('toggle-btn-on', isOn);
   $('#atcStatusText').html('ATC: ' + (isOn ? 'ON' : 'OFF'));
+  updateToolNumberOverlay();
+}
+
+// P8: current-tool overlay on the 3D View, only shown while ATC is ON -
+// with manual tool changes there's no automated sequence to label, so the
+// numbers would just be noise. Shows one badge per DISTINCT tool used in
+// the currently-loaded gcode (deduplicated from the ordered toolchanges
+// array - see setupToolChanges()/app/lib/3dview/3dview.js), highlighting
+// whichever one matches machine.tool.nexttool.number (populated by
+// index.js's machineSend() from a T(\d+) match on every non-realtime line
+// sent, including M6 Tx lines - tracked server-side already but never
+// surfaced in the UI before now). Called on every 'status' broadcast
+// (websocket.js), right here from setATCButtonState() (so toggling ATC
+// shows/hides it instantly), and whenever gcode is (re)loaded (3dview.js).
+function updateToolNumberOverlay() {
+  var $overlay = $('#toolNumberOverlay');
+  var atcOn = parseFloat(grblParams['$341']) == 3;
+
+  if (!atcOn || typeof toolchanges === 'undefined' || !toolchanges.length) {
+    $overlay.css('display', 'none');
+    return;
+  }
+
+  var uniqueTools = [];
+  for (var i = 0; i < toolchanges.length; i++) {
+    var t = toolchanges[i].toolNum;
+    if (typeof t === 'number' && !isNaN(t) && uniqueTools.indexOf(t) === -1) {
+      uniqueTools.push(t);
+    }
+  }
+  if (!uniqueTools.length) {
+    $overlay.css('display', 'none');
+    return;
+  }
+  uniqueTools.sort(function(a, b) {
+    return a - b;
+  });
+
+  // Not yet matched to any known tool (e.g. job hasn't sent an M6 yet) -
+  // show every badge dimmed rather than guessing one is "active".
+  var activeTool = (typeof laststatus !== 'undefined' && laststatus && laststatus.machine && laststatus.machine.tool) ?
+    parseFloat(laststatus.machine.tool.nexttool.number) : NaN;
+
+  var html = '';
+  for (var i = 0; i < uniqueTools.length; i++) {
+    var isActive = (activeTool == uniqueTools[i]);
+    html += '<span class="tool-badge' + (isActive ? ' tool-badge-active' : '') + '">T' + uniqueTools[i] + '</span>';
+  }
+  $overlay.html(html).css('display', 'flex');
 }
 
 function toggleATC() {

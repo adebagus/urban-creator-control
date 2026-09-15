@@ -308,6 +308,23 @@ select {
   color: #4a4e51 !important;
 }
 
+/* P8: one badge per distinct tool used in the loaded gcode (3D View
+   overlay, #toolNumberOverlay) - the currently-active one solid orange,
+   the rest a dimmer translucent orange so they read as one color family
+   rather than two unrelated palettes. */
+.tool-badge {
+  font-weight: 900;
+  font-size: 16px;
+  color: #fff;
+  background-color: rgba(250, 104, 0, 0.25);
+  padding: 6px 14px;
+  border-radius: 4px;
+}
+
+.tool-badge-active {
+  background-color: #fa6800;
+}
+
 /* P8: CONTINUOUS JOG button - OFF state deliberately left as plain
    .button.light (no override here), same neutral gray/white-with-border
    look as ATC/Router/Laser's own OFF state (green read as "already
