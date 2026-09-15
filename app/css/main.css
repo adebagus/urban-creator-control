@@ -325,24 +325,22 @@ select {
   background-color: #fa6800;
 }
 
-/* P8: CONTINUOUS JOG button - OFF state deliberately left as plain
-   .button.light (no override here), same neutral gray/white-with-border
-   look as ATC/Router/Laser's own OFF state (green read as "already
-   active" before a click, which was confusing). ON state still solid
-   orange (.toggle-btn-on, same as ATC/Router/Laser). */
-#distCONT.toggle-btn-on {
-  background-color: #fa6800 !important;
-  border-color: #fa6800 !important;
+/* P8: unified "selected" style for the jog-mode toggle group (0.1/1/10/
+   100mm + CONTINUOUS JOG) - solid bright green with bold white text,
+   applied by highlightJogDistanceButton() in app/js/jog.js. Deliberately
+   its own class, not .toggle-btn-on (ATC/Router/Laser's solid orange) -
+   this group intentionally uses a different color language, and the two
+   shouldn't be coupled (changing one must not affect the other). OFF
+   state is untouched plain .button.light, same neutral gray look as
+   before. */
+.jogmode-active {
+  background-color: #22c55e !important;
+  border-color: #22c55e !important;
 }
 
-/* highlightJogDistanceButton() adds .fg-orange to #distCONTlabel on
-   select, same as it does for the 0.1/1/10/100mm labels - fine for those
-   (orange text on their plain gray background), but here the BUTTON
-   itself also turns solid orange, so that would be orange-on-orange.
-   Force white specifically in that combination; OFF keeps its
-   JS-assigned .fg-gray as-is, same as the other distance buttons. */
-#distCONT.toggle-btn-on #distCONTlabel {
+.jogmode-active .fa-layers-text {
   color: #fff !important;
+  font-weight: 900 !important;
 }
 
 .keyboardpanel td:nth-child(1) {

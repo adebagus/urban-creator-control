@@ -36,8 +36,7 @@ test('selectJogDistance("CONT") switches to Continuous and highlights distCONT',
   context.selectJogDistance('CONT');
   assert.equal(context.allowContinuousJog, true);
   assert.equal(localStorage.getItem('continuousJog'), 'true');
-  assert.ok($.callsFor('#distCONT').some((c) => c.method === 'addClass' && c.args[0] === 'bd-orange'));
-  assert.ok($.callsFor('#distCONTlabel').some((c) => c.method === 'addClass' && c.args[0] === 'fg-orange'));
+  assert.ok($.callsFor('#distCONT').some((c) => c.method === 'addClass' && c.args[0] === 'jogmode-active'));
 });
 
 test('selectJogDistance("10") in mm mode sets jogdistXYZ=10 and leaves Continuous off', () => {
@@ -63,7 +62,7 @@ test('selectJogDistance highlights only the newly selected button (previous high
   // cleared the group before re-adding to the specific new button.
   const clears = $.callsFor('.distbtn').filter((c) => c.method === 'removeClass');
   assert.ok(clears.length >= 2, 'expected the distbtn group to be cleared on every selection');
-  assert.ok($.callsFor('#dist100').some((c) => c.method === 'addClass' && c.args[0] === 'bd-orange'));
+  assert.ok($.callsFor('#dist100').some((c) => c.method === 'addClass' && c.args[0] === 'jogmode-active'));
 });
 
 // --- setIncrementalMode() / setContinuousMode() -----------------------------

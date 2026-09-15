@@ -22,23 +22,24 @@ var jogDistanceButtonValues = {
 };
 
 function highlightJogDistanceButton(id) {
-  // P7 styling: orange (fg-orange/bd-orange, #fa6800) instead of the old
-  // fg-openbuilds/bd-openbuilds - that class currently resolves to black in
-  // this fork (see app/css/main.css), not the OpenBuilds orange its name
-  // suggests. #fa6800 is the same orange already used for the A-axis jog
-  // buttons and the new diagonal buttons, kept consistent here too.
-  $('.distbtn').removeClass('bd-orange');
-  $('.jogdistXYZ').removeClass('fg-orange').addClass('fg-gray');
-  $('#distCONTlabel').removeClass('fg-orange').addClass('fg-gray');
-  $('#' + id).addClass('bd-orange');
-  $('#' + id + 'label').removeClass('fg-gray').addClass('fg-orange');
-
-  // P8: CONTINUOUS JOG gets its own solid green/orange treatment (see
-  // #distCONT in app/css/main.css) instead of the gray/orange-border scheme
-  // above, so it reads as a distinct mode switch rather than blending in
-  // with the 0.1/1/10/100mm buttons. Reuses .toggle-btn-on, the same class
-  // ATC/Router/Laser use for their own active-state solid orange.
-  $('#distCONT').toggleClass('toggle-btn-on', id == 'distCONT');
+  // P8: one unified "selected" style (solid bright green, .jogmode-active
+  // in app/css/main.css) across all 5 mutually-exclusive choices - the
+  // 4 fixed distances AND CONTINUOUS JOG - instead of the old
+  // border-only orange highlight. Deliberately a class of its own, NOT
+  // .toggle-btn-on (ATC/Router/Laser's solid-orange active state) - this
+  // group's color language is intentionally different and shouldn't drag
+  // those other toggles' color along if either one changes later.
+  $('.distbtn').removeClass('bd-orange jogmode-active');
+  $('.jogdistXYZ, #distCONTlabel').removeClass('fg-orange').addClass('fg-gray');
+  $('#' + id).addClass('jogmode-active');
+  // .fg-gray must come off the now-selected label too: #distCONTlabel.fg-gray
+  // is an ID selector in app/css/main.css (darkens the unselected text), and
+  // an ID selector beats .jogmode-active .fa-layers-text's two classes no
+  // matter which has !important - leaving fg-gray on would keep CONTINUOUS
+  // JOG's text dark gray instead of white even while jogmode-active is solid
+  // green (the 4 distance labels don't hit this since .jogdistXYZ.fg-gray is
+  // class-only, same specificity, and simply loses to the later rule).
+  $('#' + id + 'label').removeClass('fg-gray');
 }
 
 // Maps the CURRENT jogdistXYZ number (mm or inch) back to the button id that
