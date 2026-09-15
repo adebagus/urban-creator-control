@@ -152,13 +152,20 @@ function parseGcodeInWebWorker(gcode) {
       $('#3dviewicon').addClass('fa-pulse');
       $('#3dviewlabel').html(' 3D View (rendering, please wait...)')
 
-      // P8: populate the toolchanges array (used by the tool-number 3D
-      // View overlay - see updateToolNumberOverlay() in grbl-settings.js)
-      // without also triggering populateToolChanges()'s OTHER side effect
-      // of swapping #runBtn for the dormant/untested #runToolsBtn
-      // "Run Job with Toolchanges" dropdown - setupToolChanges() alone is
-      // a pure function (scans lines, returns data, no DOM changes).
-      toolchanges = setupToolChanges(gcode);
+      // populateToolChanges(gcode)
+
+      // P8: scan for the tool-number 3D View overlay - see
+      // scanGcodeForToolNumbers()/updateToolNumberOverlay() in
+      // grbl-settings.js. Deliberately NOT toolchanges/setupToolChanges()
+      // (app/js/toolchange.js) - those turned out to also be read by
+      // app/js/ui.js's setControlBar() to decide whether to show the
+      // "Run Job with Toolchanges" dropdown (#runToolsBtn), which still
+      // points at a dead cam.openbuilds.com placeholder link. Populating
+      // toolchanges made that dropdown appear for any multi-tool file -
+      // a real regression found via testing. This scan is fully isolated:
+      // its own function, its own array, touches nothing tool-change
+      // related.
+      toolNumberOverlayTools = scanGcodeForToolNumbers(gcode);
       updateToolNumberOverlay();
     }
   }

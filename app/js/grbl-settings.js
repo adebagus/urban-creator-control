@@ -932,40 +932,58 @@ function setATCButtonState(isOn) {
   updateToolNumberOverlay();
 }
 
-// P8: current-tool overlay on the 3D View, only shown while ATC is ON -
-// with manual tool changes there's no automated sequence to label, so the
-// numbers would just be noise. Shows one badge per DISTINCT tool used in
-// the currently-loaded gcode (deduplicated from the ordered toolchanges
-// array - see setupToolChanges()/app/lib/3dview/3dview.js), highlighting
-// whichever one matches machine.tool.nexttool.number (populated by
-// index.js's machineSend() from a T(\d+) match on every non-realtime line
-// sent, including M6 Tx lines - tracked server-side already but never
-// surfaced in the UI before now). Called on every 'status' broadcast
-// (websocket.js), right here from setATCButtonState() (so toggling ATC
-// shows/hides it instantly), and whenever gcode is (re)loaded (3dview.js).
-function updateToolNumberOverlay() {
-  var $overlay = $('#toolNumberOverlay');
-  var atcOn = parseFloat(grblParams['$341']) == 3;
+// P8: tool numbers for the 3D View overlay - deliberately its OWN array,
+// filled by its OWN scan function below, NOT the pre-existing
+// toolchanges/setupToolChanges() from app/js/toolchange.js. Those turned
+// out to have a hidden second reader (app/js/ui.js's setControlBar(),
+// which shows the "Run Job with Toolchanges" dropdown - #runToolsBtn -
+// whenever toolchanges.length > 0). That dropdown's menu still points at
+// a dead cam.openbuilds.com placeholder link, so populating toolchanges
+// made it appear for any multi-tool file - a real regression found via
+// testing. This scan touches nothing tool-change related, so it can't
+// trigger that (or any other still-undiscovered) side effect.
+var toolNumberOverlayTools = [];
 
-  if (!atcOn || typeof toolchanges === 'undefined' || !toolchanges.length) {
-    $overlay.css('display', 'none');
-    return;
-  }
-
+// Same M6-context matching approach as setupToolChanges() (look for M6/
+// M06/M006 on a line, then a T<number> on that same line) but written
+// fresh, standalone, with no shared state with toolchange.js.
+function scanGcodeForToolNumbers(gcode) {
   var uniqueTools = [];
-  for (var i = 0; i < toolchanges.length; i++) {
-    var t = toolchanges[i].toolNum;
-    if (typeof t === 'number' && !isNaN(t) && uniqueTools.indexOf(t) === -1) {
-      uniqueTools.push(t);
+  var lines = gcode.split('\n');
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i];
+    if (!/M0?6\b/i.test(line)) continue;
+    var m = line.match(/T(\d+)/i);
+    if (!m) continue;
+    var toolNum = parseInt(m[1], 10);
+    if (!isNaN(toolNum) && uniqueTools.indexOf(toolNum) === -1) {
+      uniqueTools.push(toolNum);
     }
-  }
-  if (!uniqueTools.length) {
-    $overlay.css('display', 'none');
-    return;
   }
   uniqueTools.sort(function(a, b) {
     return a - b;
   });
+  return uniqueTools;
+}
+
+// P8: current-tool overlay on the 3D View, only shown while ATC is ON -
+// with manual tool changes there's no automated sequence to label, so the
+// numbers would just be noise. Shows one badge per distinct tool found by
+// scanGcodeForToolNumbers() above, highlighting whichever one matches
+// machine.tool.nexttool.number (populated by index.js's machineSend()
+// from a T(\d+) match on every non-realtime line sent, including M6 Tx
+// lines - tracked server-side already but never surfaced in the UI
+// before now). Called on every 'status' broadcast (websocket.js), right
+// here from setATCButtonState() (so toggling ATC shows/hides it
+// instantly), and whenever gcode is (re)loaded (3dview.js).
+function updateToolNumberOverlay() {
+  var $overlay = $('#toolNumberOverlay');
+  var atcOn = parseFloat(grblParams['$341']) == 3;
+
+  if (!atcOn || !toolNumberOverlayTools.length) {
+    $overlay.css('display', 'none');
+    return;
+  }
 
   // Not yet matched to any known tool (e.g. job hasn't sent an M6 yet) -
   // show every badge dimmed rather than guessing one is "active".
@@ -973,9 +991,9 @@ function updateToolNumberOverlay() {
     parseFloat(laststatus.machine.tool.nexttool.number) : NaN;
 
   var html = '';
-  for (var i = 0; i < uniqueTools.length; i++) {
-    var isActive = (activeTool == uniqueTools[i]);
-    html += '<span class="tool-badge' + (isActive ? ' tool-badge-active' : '') + '">T' + uniqueTools[i] + '</span>';
+  for (var i = 0; i < toolNumberOverlayTools.length; i++) {
+    var isActive = (activeTool == toolNumberOverlayTools[i]);
+    html += '<span class="tool-badge' + (isActive ? ' tool-badge-active' : '') + '">T' + toolNumberOverlayTools[i] + '</span>';
   }
   $overlay.html(html).css('display', 'flex');
 }
