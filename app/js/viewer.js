@@ -586,7 +586,14 @@ function fixRenderSize() {
 // two triggers (window resize, clicking the 3D View tab) that used to be
 // the only things that reshaped these panels at all.
 var CONTROL_PANEL_BOTTOM_MARGIN = 20;
-var CONTROL_PANEL_IDS = ['renderArea', 'macros', 'console', 'editor', 'fluidnceditor'];
+// P8: was 'console' - after 3 rounds of fragile pixel-math trying to keep
+// the "Enter GCODE/Serial commands" bar (position:fixed) from covering
+// #console's last log line, #tab-one is now a column flexbox instead
+// (see app/css/main.css) with that bar as a normal in-flow sibling below
+// #console. #tab-one is the one that needs an explicit pixel height now -
+// CSS flex (#console: flex:1, min-height:0) splits that height between
+// #console and the command bar with no overlap possible by construction.
+var CONTROL_PANEL_IDS = ['renderArea', 'macros', 'tab-one', 'editor', 'fluidnceditor'];
 
 function resizeControlPanels() {
   CONTROL_PANEL_IDS.forEach(function(id) {
@@ -623,6 +630,21 @@ $(document).ready(function() {
       }).observe(jogControlsEl);
     }
   }
+
+  // P8 fix: resizeControlPanels() only ran on window resize and on
+  // #jogcontrols height changes - neither fires when switching the 3D
+  // View/Log/Macros/GCODE Editor tabs themselves (Metro4's ribbonmenu just
+  // toggles which .section has .active; #tab-one/#macros/#editor start out
+  // skipped above since they're hidden - not the default tab - and nothing
+  // ever recalculated their height once the user actually switched to
+  // them, leaving them at whatever height they had last, which could be
+  // none). Metro4 fires a bubbling "tab" custom event on the ribbonmenu
+  // <nav> every time open() runs (including the very first, default-tab
+  // open) - listen for it on the ribbonmenu's container instead of one
+  // specific tab link, so this covers all 4 tabs in one place.
+  $('#controlLogs').on('tab', function() {
+    resizeControlPanels();
+  });
 });
 
 function resetView(object) {

@@ -901,8 +901,8 @@
                     </tr>
 
                     <tr>
-                      <td colspan="3" class="border-top bd-gray pt-2" style="text-align: center;">
-                        <button class="button light jogbtn mr-2" id="routerToggleBtn" onclick="toggleMachineProfile('router')" style="width: 70px;" data-role="ripple" data-ripple-color="#fa6800" title="Switch to Router profile: sends $32=0 (Laser mode OFF) and $44=4 (homing cycle 1 = Z only) immediately - no separate Save to Firmware needed.">
+                      <td colspan="3" class="border-top bd-orange pt-2" style="text-align: center;">
+                        <button class="button light jogbtn mr-2" id="routerToggleBtn" onclick="toggleMachineProfile('router')" style="width: 84px;" data-role="ripple" data-ripple-color="#fa6800" title="Switch to Router profile: sends $32=0 (Laser mode OFF) and $44=4 (homing cycle 1 = Z only) immediately - no separate Save to Firmware needed.">
                           <span class="fas fa-fw fa-toolbox icon"></span>Router
                         </button>
                         <button class="button light jogbtn" id="laserToggleBtn" onclick="toggleMachineProfile('laser')" style="width: 70px;" data-role="ripple" data-ripple-color="#fa6800" title="Switch to Laser profile: sends $32=1 (Laser mode ON) and $44=0 (disable homing cycle 1) immediately - no separate Save to Firmware needed.">
@@ -911,22 +911,6 @@
                       </td>
                     </tr>
 
-                    <tr>
-                      <td colspan="3" class="border-top bd-gray pt-2" style="text-align: center;">
-                        <div class="mr-2" style="display: inline-flex; flex-direction: column; align-items: center; vertical-align: top;">
-                          <button class="button light jogbtn" id="atcToggleBtn" onclick="toggleATC()" style="width: 70px;" data-role="ripple" data-ripple-color="#fa6800" title="Toggle Automatic Tool Change ($341): ON sends $341=3 (TOOL_CHANGE_MODE_AUTO), OFF sends $341=0 (TOOL_CHANGE_MODE_DISABLED).">
-                            <span class="fas fa-fw fa-exchange-alt icon" id="atcToggleIcon"></span>ATC
-                          </button>
-                          <div class="text-small mt-1" id="atcStatusText" style="font-weight: bold;">ATC: OFF</div>
-                        </div>
-                        <button class="button light jogbtn mr-2" onclick="sendGcode('$TLS')" style="width: 70px;" data-role="ripple" data-ripple-color="#fa6800" title="Set Toolsetter ($TLS): jog to your toolsetter first, then click - firmware captures the current X/Y/Z as the toolsetter reference for automatic tool change.">
-                          <span class="fas fa-fw fa-bullseye icon fg-orange"></span>TLS
-                        </button>
-                        <button class="button light jogbtn" onclick="sendGcode('$TCZ')" style="width: 70px;" data-role="ripple" data-ripple-color="#fa6800" title="Set Safe Z ($TCZ): captures the current Z as this session's safe clearance height. Only works with Homing OFF ($22=0) and after $TLS has been run - the firmware will show an error in the log otherwise.">
-                          <span class="fas fa-fw fa-arrows-alt-v icon fg-orange"></span>TCZ
-                        </button>
-                      </td>
-                    </tr>
                   </table>
                 </div>
                 <div class="cell">
@@ -1006,7 +990,7 @@
                       </td>
 
                       <td class="p-0" style="vertical-align: middle; text-align: center;">
-                        <button class="button square m-0 bg-orange" id="stopJog" title="Cancel current jog move (sends GRBL/grblHAL real-time jog-cancel, 0x85) without a full E-Stop/reset" style="width: 55px; height: 55px; border-radius: 50%; border: none;" data-role="ripple" data-ripple-color="#ffffff">
+                        <button class="button square m-0 bg-orange" id="stopJog" title="Cancel current jog move (sends GRBL/grblHAL real-time jog-cancel, 0x85) without a full E-Stop/reset" style="width: 55px; height: 55px; border-radius: 50%; border: none;">
                           <span class="fa-layers fa-fw">
                             <i class="fas fa-stop fg-white" data-fa-transform="shrink-4"></i>
                           </span>
@@ -1155,27 +1139,56 @@
                   </table>
                 </div>
 
-                <div class="cell border-left bd-gray" id="jrocell">
-                  <button class="button light mini mb-1" onclick="jogOverride(100);">reset</button>
-                  <input id="jro" data-on-stop="jogOverride(arguments[0])" data-role="slider" data-accuracy="1" data-vertical="true" data-size="180" data-min="1" data-max="100" data-value="100" data-hint="true" data-hint-always="true"
-                    data-hint-position="bottom" data-hint-mask="Jog: $1%" data-cls-hint="bg-light
-                        fg-dark shadow-1" data-cls-complete="bg-openbuilds">
-                  <span class="tally text-small bg-openbuilds fg-white" id="realJog"></span>
-                </div>
+                <!-- P8: this wrapper groups the 3 override sliders AND the
+                     ATC/TLS/TCZ row together as ONE flex-column cell, so the
+                     button row below is always exactly as wide as the 3
+                     sliders combined (text-center then lands it visually
+                     under them) with no manual margin/width math needed -
+                     robust to the sliders' own width changing later. -->
+                <div class="cell border-left bd-gray" style="display: flex; flex-direction: column;">
+                  <div class="row">
+                    <div class="cell" id="jrocell">
+                      <button class="button light mini mb-1" onclick="jogOverride(100);">reset</button>
+                      <input id="jro" data-on-stop="jogOverride(arguments[0])" data-role="slider" data-accuracy="1" data-vertical="true" data-size="130" data-min="1" data-max="100" data-value="100" data-hint="true" data-hint-always="true"
+                        data-hint-position="bottom" data-hint-mask="Jog: $1%" data-cls-hint="bg-light
+                            fg-dark shadow-1" data-cls-complete="bg-openbuilds">
+                      <span class="tally text-small bg-openbuilds fg-white" id="realJog"></span>
+                    </div>
 
-                <div class="cell border-left bd-gray" id="frocell">
-                  <button class="button light mini mb-1" onclick="feedOverride(100);">reset</button>
-                  <input id="fro" data-on-stop="feedOverride(arguments[0])" data-role="slider" data-accuracy="5" data-vertical="true" data-size="180" data-accuracy="1" data-min="10" data-max="200" data-value="100" data-hint="true"
-                    data-hint-always="true" data-hint-position="bottom" data-hint-mask="Feed: $1%" data-cls-hint="bg-light
-                        fg-dark shadow-1" data-cls-complete="bg-openbuilds">
-                  <span class="tally text-small bg-openbuilds fg-white" id="realFeed"></span>
-                </div>
-                <div class="cell border-left bd-gray" id="trocell">
-                  <button class="button light mini  mb-1" onclick="spindleOverride(100);">reset</button>
-                  <input id="tro" data-on-stop="spindleOverride(arguments[0])" data-role="slider" data-accuracy="5" data-vertical="true" data-size="180" data-accuracy="1" data-min="10" data-max="200" data-value="100" data-hint="true"
-                    data-hint-always="true" data-hint-position="bottom" data-hint-mask="Tool: $1%" data-cls-hint="bg-light
-                        fg-dark shadow-1" data-cls-complete="bg-openbuilds">
-                  <span class="tally text-small bg-openbuilds fg-white" id="realSpeed"></span>
+                    <div class="cell border-left bd-gray" id="frocell">
+                      <button class="button light mini mb-1" onclick="feedOverride(100);">reset</button>
+                      <input id="fro" data-on-stop="feedOverride(arguments[0])" data-role="slider" data-accuracy="5" data-vertical="true" data-size="130" data-accuracy="1" data-min="10" data-max="200" data-value="100" data-hint="true"
+                        data-hint-always="true" data-hint-position="bottom" data-hint-mask="Feed: $1%" data-cls-hint="bg-light
+                            fg-dark shadow-1" data-cls-complete="bg-openbuilds">
+                      <span class="tally text-small bg-openbuilds fg-white" id="realFeed"></span>
+                    </div>
+                    <div class="cell border-left bd-gray" id="trocell">
+                      <button class="button light mini  mb-1" onclick="spindleOverride(100);">reset</button>
+                      <input id="tro" data-on-stop="spindleOverride(arguments[0])" data-role="slider" data-accuracy="5" data-vertical="true" data-size="130" data-accuracy="1" data-min="10" data-max="200" data-value="100" data-hint="true"
+                        data-hint-always="true" data-hint-position="bottom" data-hint-mask="Tool: $1%" data-cls-hint="bg-light
+                            fg-dark shadow-1" data-cls-complete="bg-openbuilds">
+                      <span class="tally text-small bg-openbuilds fg-white" id="realSpeed"></span>
+                    </div>
+                  </div>
+
+                  <!-- P8: ATC/TLS/TCZ - the #atcStatusText "ATC: ON/OFF" label
+                       that used to sit under the ATC button is gone (ATC's own
+                       color now carries that status - see .atc-active in
+                       app/css/main.css and setATCButtonState() in
+                       grbl-settings.js), so ATC/TLS/TCZ are now 3 plain
+                       same-size buttons in a row, no special wrapper needed
+                       for ATC anymore. -->
+                  <div id="atcTlsTczRow" style="border-top: 1px solid #22c55e; padding-top: 8px;" class="text-center mt-4">
+                    <button class="button light jogbtn mr-2" id="atcToggleBtn" onclick="toggleATC()" style="width: 70px;" data-role="ripple" data-ripple-color="#fa6800" title="Toggle Automatic Tool Change ($341): ON sends $341=3 (TOOL_CHANGE_MODE_AUTO), OFF sends $341=0 (TOOL_CHANGE_MODE_DISABLED).">
+                      <span class="fas fa-fw fa-exchange-alt icon" id="atcToggleIcon"></span>ATC
+                    </button>
+                    <button class="button light jogbtn mr-2" onclick="sendGcode('$TLS')" style="width: 70px;" data-role="ripple" data-ripple-color="#fa6800" title="Set Toolsetter ($TLS): jog to your toolsetter first, then click - firmware captures the current X/Y/Z as the toolsetter reference for automatic tool change.">
+                      <span class="fas fa-fw fa-bullseye icon fg-orange"></span>TLS
+                    </button>
+                    <button class="button light jogbtn" onclick="sendGcode('$TCZ')" style="width: 70px;" data-role="ripple" data-ripple-color="#fa6800" title="Set Safe Z ($TCZ): captures the current Z as this session's safe clearance height. Only works with Homing OFF ($22=0) and after $TLS has been run - the firmware will show an error in the log otherwise.">
+                      <span class="fas fa-fw fa-arrows-alt-v icon fg-orange"></span>TCZ
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1194,7 +1207,11 @@
                 <div class="content-holder">
                   <div class="section" id="tab-one">
                     <div id="console"></div>
-                    <div class="fixed-bottom m-3 mb-9">
+                    <!-- P8: was .fixed-bottom (position:fixed, floating over
+                         #console - see #tab-one/#console in app/css/main.css
+                         for why that was fragile and is now a plain in-flow
+                         column-flex sibling instead). -->
+                    <div class="mt-2 mb-2">
                       <form class="inline-form" id="commandform" autocomplete="off">
                         <input title="Tip: Press F6 anywhere on the CONTROL window to quickly jump to this input" data-prepend="&nbsp;<i class='fas fa-terminal'></i>" data-role="input" data-clear-button="false" data-role="input" id="command"
                           type="text" autocomplete="on" class=" dark needs-connection" style="width: calc(100vw - 170px);" data-editable="true" placeholder="Enter GCODE/Serial commands here to send it to your machine" />

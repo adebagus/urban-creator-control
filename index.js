@@ -947,8 +947,13 @@ io.on("connection", function(socket) {
     })
   });
 
+  // P8: the custom "X" button in the HTML titlebar (app/index.html) used to
+  // just hide to tray - now quits the app for real, via the same validated
+  // cleanup path as the tray Quit menu / Cmd+Q (closes the serial port and
+  // backend server before exiting). See also jogWindow.on('close', ...)
+  // below, which now does the same for Alt+F4/taskbar-Close.
   socket.on("minimisetotray", function(data) {
-    jogWindow.hide();
+    quitAndCleanup(0);
   });
 
   socket.on("minimize", function(data) {
@@ -3502,11 +3507,14 @@ if (isElectron()) {
       jogWindow.loadURL(`http://localhost:${config.webPort}/`);
       //jogWindow.webContents.openDevTools()
 
+      // P8: used to hide to tray unless forceQuit was already set elsewhere
+      // (e.g. by the tray Quit menu) - now always quits for real (Alt+F4,
+      // taskbar right-click > Close), same validated cleanup path as tray
+      // Quit/Cmd+Q/the custom titlebar X (see "minimisetotray" above).
+      // quitAndCleanup is idempotent via its own isQuitting guard, so this
+      // is harmless if a quit is already under way from another path.
       jogWindow.on('close', function(event) {
-        if (!forceQuit) {
-          jogWindow.hide();
-          return false;
-        }
+        quitAndCleanup(0);
       });
 
       // Emitted when the window is closed.

@@ -94,12 +94,34 @@ body {
   background-color: #eee;
 }
 
+/* P8 fix (replaces 3 rounds of fragile JS pixel-math): #tab-one used to
+   rely on Metro4's default row flex layout, with the "Enter GCODE/Serial
+   commands" bar pulled out via position:fixed so it wouldn't sit
+   side-by-side with #console - which meant #console's height had to be
+   computed in JS to dodge wherever that floating bar happened to be,
+   and every attempt at that math had its own bug (margin excluded from
+   getBoundingClientRect().height, then offsetParent always null for
+   position:fixed elements). OpenBuilds CONTROL's original layout instead
+   makes #tab-one a column flexbox: #console (flex:1, scrollable) fills
+   whatever space is left above the command bar, which is now a normal
+   in-flow sibling below it (see the div wrapping #commandform in
+   app/index.html - no longer .fixed-bottom). Overlap is now impossible
+   by construction, not just carefully arithmetic'd around. */
+#tab-one {
+  flex-direction: column;
+}
+
 #console {
   /*font-family: "Courier New", Courier, monospace;*/
   font-family: "Lucida Console", Monaco, monospace;
-  /* P8 fix: see #macros above - same hardcoded-offset bug, same fix
-     (resizeControlPanels() in app/js/viewer.js sets the real height). */
-  min-height: 300px;
+  /* P8 fix: see #macros above for the same "JS sets the real height on
+     load/resize" pattern (resizeControlPanels() in app/js/viewer.js now
+     targets #tab-one directly, not #console) - flex:1 here just splits
+     that height between #console and the command bar below it, and
+     min-height:0 is required for a flex child to actually shrink/scroll
+     instead of growing to fit all its content. */
+  flex: 1 1 auto;
+  min-height: 0;
   width: 100%;
   overflow-y: auto;
   overflow-x: none;
@@ -341,6 +363,22 @@ select {
 .jogmode-active .fa-layers-text {
   color: #fff !important;
   font-weight: 900 !important;
+}
+
+/* P8: ATC's own "ON" color - deliberately its own class, not .toggle-btn-on
+   (Router/Laser stay solid orange), same bright-green language as
+   .jogmode-active above. ATC's status used to also show as a separate
+   "ATC: ON/OFF" text label (#atcStatusText, removed) - now the button's own
+   color is the only status indicator, so it needs to read clearly at a
+   glance. See setATCButtonState() in app/js/grbl-settings.js. */
+.atc-active {
+  background-color: #22c55e !important;
+  border-color: #22c55e !important;
+  color: #fff !important;
+}
+
+.atc-active .icon {
+  color: #fff !important;
 }
 
 .keyboardpanel td:nth-child(1) {

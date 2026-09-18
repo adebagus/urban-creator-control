@@ -224,12 +224,33 @@ test('P7: TLS/TCZ toolsetter buttons exist and send the exact custom firmware co
   assert.match(html, /sendGcode\('\$TLS'\)/);
   assert.match(html, /sendGcode\('\$TCZ'\)/);
   // Regression guard for the "buttons overlapping Zero X/Y/Z, no visual
-  // separation, left-aligned" bug reported and fixed after first landing:
+  // separation, left-aligned" bug reported and fixed after first landing.
+  // P8 moved ATC/TLS/TCZ out of the DRO column (and then out of the narrow
+  // per-slider cells from an intermediate attempt) into a row, #atcTlsTczRow,
+  // nested in the same flex-column wrapper as the 3 Jog%/Feed%/Tool%
+  // Override sliders, directly below them. mt-4's margin-top is the visual
+  // separator from the sliders above (replacing the old border-top, and
+  // widened from mt-2 - too tight, read as one group with the sliders
+  // instead of a distinct one); text-center keeps the row centered. A
+  // green border-top (matching .atc-active's color) was later added as an
+  // explicit dividing line on top of that spacing - checked via the tag's
+  // full attribute text (order-agnostic) rather than a fixed class regex.
+  const rowTagOpenMatch = html.match(/<div id="atcTlsTczRow"[^>]*>/);
+  assert.ok(rowTagOpenMatch, '#atcTlsTczRow must exist');
+  const rowTagOpen = rowTagOpenMatch[0];
+  assert.match(rowTagOpen, /class="[^"]*\btext-center\b[^"]*"/, '#atcTlsTczRow must be centered');
+  assert.match(rowTagOpen, /class="[^"]*\bmt-4\b[^"]*"/, '#atcTlsTczRow must have a clear visual separator (margin-top) from the sliders above it');
+  assert.match(rowTagOpen, /border-top:\s*1px solid #22c55e/, '#atcTlsTczRow must have a green dividing line from the sliders above it');
+
+  const trocellIdx = html.indexOf('id="trocell"');
+  const rowStart = html.indexOf('<div id="atcTlsTczRow"');
+  const nextSectionStart = html.indexOf('<div id="controlLogs"', rowStart);
+  assert.ok(rowStart > trocellIdx, '#atcTlsTczRow must come after the 3 override slider cells, not be nested inside one of them');
+
   const tlsIdx = html.indexOf("sendGcode('$TLS')");
-  const rowStart = html.lastIndexOf('<tr>', tlsIdx);
-  const rowSnippet = html.slice(rowStart, tlsIdx);
-  assert.match(rowSnippet, /border-top/, 'TLS/TCZ row must have a visual separator from the Set Zero buttons above it');
-  assert.match(rowSnippet, /text-align:\s*center/, 'TLS/TCZ row must be centered, not left-aligned under the old per-axis columns');
+  const tczIdx = html.indexOf("sendGcode('$TCZ')");
+  assert.ok(tlsIdx > rowStart && tlsIdx < nextSectionStart, 'TLS button must be inside #atcTlsTczRow');
+  assert.ok(tczIdx > rowStart && tczIdx < nextSectionStart, 'TCZ button must be inside #atcTlsTczRow');
 });
 
 test('$347 fix does not fight for the same key as any other setting', () => {

@@ -924,10 +924,17 @@ function toggleMachineProfile(type) {
 //   whenever a real $$ dump comes in, so it self-corrects if the optimistic
 //   guess above was ever wrong.
 function setATCButtonState(isOn) {
-  // P8: solid orange fill (see the shared .toggle-btn-on rule in
-  // app/css/main.css) rather than just an orange border - a border alone
-  // wasn't distinct enough from the OFF state to read as "on" at a glance.
-  $('#atcToggleBtn').toggleClass('toggle-btn-on', isOn);
+  // P8: solid bright-green fill (see the .atc-active rule in
+  // app/css/main.css) rather than just a border - a border alone wasn't
+  // distinct enough from the OFF state to read as "on" at a glance.
+  // Deliberately its own class, not the shared .toggle-btn-on (Router/Laser
+  // stay solid orange) - ATC's on/off state used a different, separate
+  // "ATC: ON/OFF" text label until #atcStatusText was removed, so now the
+  // button's own color is the only indicator and needed a more prominent
+  // color of its own. #atcStatusText no longer exists in the HTML - this
+  // call is a harmless no-op (jQuery silently ignores .html() on an empty
+  // selection) kept only because other code may still reference the id.
+  $('#atcToggleBtn').toggleClass('atc-active', isOn);
   $('#atcStatusText').html('ATC: ' + (isOn ? 'ON' : 'OFF'));
   updateToolNumberOverlay();
 }
