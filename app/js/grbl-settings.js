@@ -863,8 +863,19 @@ function syncHardLimitAndHomingCheckboxes() {
 // testing: Save to Firmware -> Reset Grbl -> the badge disappeared even
 // though $21/$22 were still correctly saved).
 function syncHardLimitAndHomingFromFirmware() {
-  $('#hardlimitsenabled:checkbox').prop('checked', parseFloat(grblParams['$21']) == 1);
-  $('#homingenabled:checkbox').prop('checked', parseFloat(grblParams['$22']) > 0);
+  var hardLimitsOn = parseFloat(grblParams['$21']) == 1;
+  var homingOn = parseFloat(grblParams['$22']) > 0;
+
+  $('#hardlimitsenabled:checkbox').prop('checked', hardLimitsOn);
+  $('#homingenabled:checkbox').prop('checked', homingOn);
+
+  // P9: same read, extended to the read-only status badges on the Machine
+  // Control screen - same "one read, two places kept in sync" pattern as
+  // syncMachineProfileCheckbox() doing double duty for the Router/Laser
+  // buttons there. These badges have no toggle of their own; they only ever
+  // reflect this ground truth.
+  $('#hardLimitStatusBadge').text('Hard Limit: ' + (hardLimitsOn ? 'ON' : 'OFF')).toggleClass('status-on', hardLimitsOn);
+  $('#homingStatusBadge').text('Homing: ' + (homingOn ? 'ON' : 'OFF')).toggleClass('status-on', homingOn);
 }
 
 // P8: single source of truth for the Router/Laser radio checkmark - always

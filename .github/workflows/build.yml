@@ -22,9 +22,13 @@ jobs:
       # new Windows Signing (2024)
       - name: Setup Certificate (Windows)
         if: startsWith(matrix.os, 'windows')
+        # NEVER print this file. It is the decoded PKCS#12 bundle, which
+        # contains the code-signing PRIVATE KEY. GitHub's secret masking only
+        # matches the literal secret string (the base64 text) - the decoded
+        # bytes are NOT masked, so a `cat` here would publish the signing key
+        # into the Actions log, which is world-readable on a public repo.
         run: |
           echo "${{secrets.SM_CLIENT_CERT_FILE_B64 }}" | base64 --decode > /d/Certificate_pkcs12.p12
-          cat /d/Certificate_pkcs12.p12
         shell: bash
 
       # new Windows Signing (2024)

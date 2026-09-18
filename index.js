@@ -86,14 +86,20 @@ config.webPortSsl = process.env.WEB_PORT_SSL || 4001;
 config.posDecimals = process.env.DRO_DECIMALS || 3;
 config.grblWaitTime = 0.5;
 
-// P3: origin allowlist for the Express HTTP API only (below) - the JSON/
-// upload/gcode-runner endpoints that only this app's own pages (the
-// Electron renderer at localhost/127.0.0.1) should be able to call.
-// Deliberately NOT applied to Socket.IO: the LAN "Jog from Phone" page
-// (app/jog) legitimately connects from whatever LAN IP the machine has that
-// day, which this fixed allowlist can't predict, and Socket.IO's own
-// same-origin default already prevents an unrelated website's JS from using
-// it cross-origin without needing an explicit (and here, unsafe) allowlist.
+// P3/P9: origin allowlist, used by BOTH the Express HTTP API (below) and the
+// Socket.IO handshake (see allowRequest on the io server).
+//
+// P9 correction: the original P3 note here claimed Socket.IO didn't need this
+// because "Socket.IO's own same-origin default already prevents an unrelated
+// website's JS from using it cross-origin". That was wrong. Socket.IO's CORS
+// handling only covers the HTTP long-polling transport; a WebSocket handshake
+// is not subject to the browser's same-origin policy at all (no preflight, no
+// CORS), and engine.io performs no origin check of its own unless the server
+// supplies allowRequest. Any site the user happened to have open could
+// therefore open ws://localhost:<port>/socket.io/ and emit serialInject /
+// runCommand / flashGrblHal etc. - full control of the machine. What actually
+// protects the socket now is the allowRequest hook wired up below, reusing
+// this same list so HTTP and WebSocket can never drift apart.
 //
 // This MUST be computed fresh on every call, not captured into a static
 // array once at module load: config.webPort/webPortSsl are only a first
@@ -104,12 +110,40 @@ config.grblWaitTime = 0.5;
 // first-guess port forever, rejecting every legitimate request from the
 // renderer once it's actually running on the fallback port.
 function getAllowedOrigins() {
-  return [
+  var origins = [
     'http://localhost:' + config.webPort,
     'http://127.0.0.1:' + config.webPort,
     'https://localhost:' + config.webPortSsl,
     'https://127.0.0.1:' + config.webPortSsl
   ];
+
+  // P9: the LAN "Jog from Phone" page is served by this very server, and the
+  // QR code in the Jog Widget dialog encodes http://<this host's LAN IP>:
+  // <webPort>/jog (see jogWidget() in app/js/widget.js), so the phone's
+  // browser sends exactly that as its Origin. Enumerate every non-internal
+  // IPv4 address this host actually has, rather than only ip.address()'s
+  // single primary guess - a machine with both Wi-Fi and Ethernet would
+  // otherwise reject the phone whenever it reached the server over the other
+  // interface. This stays a tight allowlist: only addresses belonging to this
+  // machine, on the port this server is actually listening on.
+  // (require here, not at module scope: index.js already has a `const os` far
+  // below, and a second top-level declaration would be a redeclaration error.)
+  try {
+    var ifaces = require('os').networkInterfaces();
+    Object.keys(ifaces).forEach(function(ifname) {
+      (ifaces[ifname] || []).forEach(function(iface) {
+        if (iface.internal) return;
+        if (iface.family !== 'IPv4' && iface.family !== 4) return;
+        origins.push('http://' + iface.address + ':' + config.webPort);
+        origins.push('https://' + iface.address + ':' + config.webPortSsl);
+      });
+    });
+  } catch (e) {
+    // Interface enumeration failing must not take the allowlist with it -
+    // localhost entries above still let the desktop renderer work.
+  }
+
+  return origins;
 }
 
 var express = require("express");
@@ -122,7 +156,54 @@ const {
   Server: ioServer
 } = require('socket.io');
 
-var io = new ioServer();
+// P9: every socket event this server exposes can move the machine
+// (serialInject writes straight to the port, runCommand streams gcode,
+// flashGrblHal reflashes the controller, writeInterfaceUsbDrive writes files,
+// quit kills the app mid-job). Until now the handshake was completely
+// unauthenticated and unvalidated. allowRequest is engine.io's only hook that
+// runs for BOTH transports - polling AND the WebSocket upgrade - so this is
+// the one place an origin check actually covers cross-site WebSocket
+// hijacking. Serving the client library (/socket.io/socket.io.js) happens in
+// socket.io's own request handler before this hook, so the jog page can still
+// load its script and then connect.
+//
+// P9 correction: the initial version of this also rejected requests with NO
+// Origin header at all, on the assumption that "browsers always send Origin
+// on a WebSocket handshake" - true, but irrelevant, because socket.io's
+// client doesn't start with a WebSocket. It first does a plain
+// `GET /socket.io/?EIO=4&transport=polling` handshake, and browsers omit the
+// Origin header on a same-origin GET. Both the Electron renderer
+// (http://localhost:<port> talking to itself) and the LAN "Jog from Phone"
+// page (http://<lan-ip>:<port> talking to itself) are same-origin to this
+// server, so BOTH were being rejected at the very first handshake - the
+// entire app went permanently NOCOMM. Confirmed via serial.log: 50 straight
+// "no Origin header" rejections from 127.0.0.1, zero "disallowed origin"
+// ones. Fixed by allowing the no-Origin case - a cross-site page cannot
+// forge this, since a cross-origin request (the actual attack this guards
+// against) always carries a real Origin header the browser sets itself, so
+// the reject-on-mismatch branch below still closes that hole.
+var io = new ioServer({
+  allowRequest: function(req, callback) {
+    var origin = req.headers.origin;
+    var peer = (req.socket && req.socket.remoteAddress) || 'unknown';
+
+    if (!origin) {
+      // No Origin means either a same-origin request from this app's own
+      // pages (the common case - see above) or a non-browser client that
+      // doesn't set one. Either way, a hostile cross-origin page cannot
+      // reach this branch: the browser itself attaches a real Origin header
+      // to any actual cross-origin request, which is rejected below instead.
+      return callback(null, true);
+    }
+
+    if (!isAllowedOrigin(origin)) {
+      serialLog('warn', 'Socket.IO handshake rejected from disallowed origin: ' + origin + ' (' + peer + ')');
+      return callback(null, false);
+    }
+
+    return callback(null, true);
+  }
+});
 
 var fs = require('fs');
 var path = require("path");
@@ -329,7 +410,6 @@ const BrowserWindow = electron.BrowserWindow;
 const Tray = electron.Tray;
 const nativeImage = require('electron').nativeImage
 const Menu = require('electron').Menu
-var forceQuit
 
 var appIcon = null,
   jogWindow = null,
@@ -1092,7 +1172,6 @@ io.on("connection", function(socket) {
   socket.on("writeInterfaceUsbDrive", function(data) {
 
     debug_log(data)
-    //data.drive = mountpoint dest
     //data.controller = type of controller
     if (data.controller == "blackbox4x" || data.controller == "genericgrbl") {
       var probesrc = path.join(__dirname, './app/wizards/interface/PROBE/');
@@ -1102,15 +1181,57 @@ io.on("connection", function(socket) {
       var profilesrc = path.join(__dirname, './app/wizards/interface/PROFILESHAL/');
     }
 
-    var probedest = path.join(data.drive, "/PROBE/");
-    var profiledest = path.join(data.drive, "/PROFILES/");
+    // P9: data.drive used to be taken straight from the client and fed into
+    // path.join() + ncp + fs.mkdir({recursive:true}) + fs.writeFile, so any
+    // socket client could have this handler create folders and write files
+    // anywhere the app has permission - e.g. the Windows Startup folder, for
+    // persistence, plus the user's WiFi PSK in plaintext wherever it liked.
+    //
+    // The client was never the source of truth for this path anyway: the
+    // wizard asks the SERVER to open a native directory picker
+    // (socket.on("openInterfaceDir") above), and the server stores what the
+    // user picked in status.interface.diskdrive. copyFilesToUsb() in
+    // app/wizards/interface/usbprep.js then just echoes that same value back.
+    // So use the server's own record and ignore the echo entirely - there is
+    // no path string from the client left to validate or sanitise.
+    var drive = status.interface.diskdrive;
+
+    if (!drive || typeof drive !== 'string') {
+      serialLog('warn', 'writeInterfaceUsbDrive rejected: no USB drive has been picked via the native dialog yet');
+      io.sockets.emit('data', {
+        'command': 'Interface USB Drive',
+        'response': 'No USB drive selected. Click "Select USB Flashdrive" and choose the drive first.',
+        'type': 'error'
+      });
+      return;
+    }
+
+    // The drive may have been unplugged between picking it and pressing the
+    // button - fail with a clear message instead of silently recreating the
+    // directory tree somewhere stale.
+    try {
+      if (!fs.existsSync(drive) || !fs.statSync(drive).isDirectory()) {
+        throw new Error('not a directory');
+      }
+    } catch (e) {
+      serialLog('warn', 'writeInterfaceUsbDrive rejected: selected drive is not available (' + drive + ')');
+      io.sockets.emit('data', {
+        'command': 'Interface USB Drive',
+        'response': 'Selected drive ' + drive + ' is no longer available. Re-select the USB flashdrive and try again.',
+        'type': 'error'
+      });
+      return;
+    }
+
+    var probedest = path.join(drive, "/PROBE/");
+    var profiledest = path.join(drive, "/PROFILES/");
 
     var ncp = require('ncp').ncp;
     ncp.limit = 16;
 
     var output = {
       'command': 'Interface USB Drive',
-      'response': "Starting to copy data to " + data.drive,
+      'response': "Starting to copy data to " + drive,
       'type': 'info'
     }
     io.sockets.emit('data', output);
@@ -1120,7 +1241,7 @@ io.on("connection", function(socket) {
     if (data.ssid && data.psk) {
 
 
-      const folderPath = path.join(data.drive, "CONFIG");
+      const folderPath = path.join(drive, "CONFIG");
 
       // Create the subfolder if it doesn't exist and then write the file
       fs.mkdir(folderPath, {
@@ -1204,7 +1325,7 @@ io.on("connection", function(socket) {
       if (errorCount == 0) {
         var output = {
           'command': 'Interface USB Drive',
-          'response': "Finished copying supporting files to Drive " + data.drive,
+          'response': "Finished copying supporting files to Drive " + drive,
           'type': 'success'
         }
         io.sockets.emit('data', output);
@@ -2630,10 +2751,124 @@ function closeBackendServers(callback) {
   }
 }
 
+// P9: is the machine in a state where yanking the serial port would leave it
+// moving/cutting with nothing left to stop it? connectionStatus is the
+// authoritative one (see the status object: 3 = playing, 4 = paused mid-job,
+// 6 = firmware flash - interrupting a flash can brick the controller, which
+// is if anything a worse moment to quit than mid-cut). runStatus and a
+// non-drained queue are belt-and-braces: any one of them saying "busy" is
+// enough, since the cost of a needless prompt is far lower than the cost of
+// dropping comms mid-move.
+function isMachineBusy() {
+  try {
+    if ([3, 4, 6].indexOf(status.comms.connectionStatus) !== -1) return true;
+    if (/^(Run|Hold|Jog|Door|Running|Paused|Resuming)/i.test(String(status.comms.runStatus || ''))) return true;
+    if (typeof gcodeQueue !== 'undefined' && gcodeQueue.length > queuePointer) return true;
+  } catch (e) {}
+  return false;
+}
+
+// P9: bring the machine to a controlled stop before the port disappears -
+// feed hold, then soft reset, then a moment for those bytes to actually
+// leave the buffer. Same sequence (and same realtime primitives) stop()
+// already uses, deliberately reused rather than reinvented. Always calls
+// back exactly once, and is hard-capped so a wedged write can never hang
+// the quit: the whole point of this path is that the app still exits.
+function stopMachineBeforeQuit(done) {
+  var settled = false;
+
+  function finish(reason) {
+    if (settled) return;
+    settled = true;
+    if (reason) serialLog('info', 'Machine stop before quit: ' + reason);
+    done();
+  }
+
+  if (!(status.comms.connectionStatus > 0)) {
+    return finish('no machine connected - nothing to stop');
+  }
+
+  setTimeout(function() {
+    finish('timed out waiting for stop sequence - exiting anyway');
+  }, 1200);
+
+  try {
+    serialLog('info', 'Quit with machine connected - sending feed hold (!) then soft reset (0x18) before closing port');
+    addQRealtime('!'); // hold - decelerate under control
+    setTimeout(function() {
+      try {
+        addQRealtime(String.fromCharCode(0x18)); // ctrl-x soft reset
+      } catch (e) {
+        serialLog('error', 'Soft reset on quit failed: ' + e.message);
+      }
+      setTimeout(function() {
+        finish('feed hold + soft reset sent');
+      }, 150);
+    }, 250);
+  } catch (e) {
+    serialLog('error', 'Feed hold on quit failed: ' + e.message);
+    finish('stop sequence errored');
+  }
+}
+
+// P9: true while the "job is running" confirmation is on screen. Separate
+// from isQuitting on purpose - isQuitting means "cleanup has started, point
+// of no return", and must NOT be set before the user has actually agreed to
+// quit. Setting it around the prompt instead would leave the app permanently
+// unquittable after a single cancel.
+var quitPromptOpen = false;
+
+// Returns true if the quit is going ahead, false if the user cancelled at the
+// confirmation. Callers that can abort their own event (the window 'close'
+// handler, will-quit) MUST check the return value and preventDefault(),
+// otherwise the window/app would go away anyway despite the user saying no.
 function quitAndCleanup(exitCode) {
-  if (isQuitting) return;
+  if (isQuitting) return true; // already past the point of no return
+  if (quitPromptOpen) return false; // don't stack a second dialog on the first
+
+  if (isMachineBusy()) {
+    var choice = 1; // default to "go ahead" only if the dialog itself fails
+    var promptOptions = {
+      type: 'warning',
+      buttons: ['Batal', 'Tetap Tutup'],
+      defaultId: 0, // Enter = Batal
+      cancelId: 0, // Esc / closing the dialog = Batal
+      noLink: true,
+      title: APP_DISPLAY_NAME,
+      message: 'Job sedang berjalan - tutup aplikasi sekarang?',
+      detail: 'Mesin masih aktif (status: ' + (status.comms.runStatus || 'tidak diketahui') +
+        ').\n\nMenutup aplikasi akan memutus koneksi ke controller. Jika Anda tetap menutup, ' +
+        'aplikasi lebih dulu mengirim feed hold dan soft reset supaya mesin berhenti terkendali - ' +
+        'tapi job yang sedang berjalan tetap batal dan tidak bisa dilanjutkan.'
+    };
+
+    quitPromptOpen = true;
+    try {
+      // Sync on purpose: this blocks the main process while the dialog is up,
+      // so no other quit trigger, socket event or timer can slip in and start
+      // tearing things down behind the dialog's back. An async dialog here
+      // would be exactly the race this guard exists to prevent.
+      choice = jogWindow ?
+        dialog.showMessageBoxSync(jogWindow, promptOptions) :
+        dialog.showMessageBoxSync(promptOptions);
+    } catch (e) {
+      // No window to parent to, or dialogs unavailable. Refusing to quit here
+      // would make the app impossible to close, pushing the user toward a
+      // force-kill - which is the ungraceful teardown this whole path exists
+      // to avoid. Proceed, but the controlled-stop below still runs.
+      serialLog('error', 'Could not show quit confirmation (' + e.message + ') - proceeding with guarded quit');
+      choice = 1;
+    } finally {
+      quitPromptOpen = false;
+    }
+
+    if (choice !== 1) {
+      serialLog('info', 'Quit cancelled by user - machine still busy, app stays open');
+      return false;
+    }
+  }
+
   isQuitting = true;
-  forceQuit = true;
 
   serialLog('info', 'Quit requested - beginning shutdown cleanup');
 
@@ -2659,42 +2894,49 @@ function quitAndCleanup(exitCode) {
     }
   }
 
-  var portIsOpenUsb = status.comms.interfaces.type == "usb" &&
-    typeof port !== 'undefined' && port && port.isOpen;
+  // Backend servers can start closing immediately - that's independent of the
+  // machine, and nothing about it can disturb the stop sequence below.
+  closeBackendServers(taskDone);
 
-  if (portIsOpenUsb) {
-    var closingPath = port.path;
-    serialLog('info', 'Port ' + closingPath + ' is still open at quit - closing before exit');
+  // The port must not close until the machine has been told to stop.
+  stopMachineBeforeQuit(function() {
+    var portIsOpenUsb = status.comms.interfaces.type == "usb" &&
+      typeof port !== 'undefined' && port && port.isOpen;
 
-    // Safety net: never let a wedged driver/board (seen on some grblHAL USB-CDC
-    // implementations) block application exit indefinitely - force exit after
-    // a short timeout if the close callback never fires.
-    var safetyTimer = setTimeout(function() {
-      serialLog('warn', 'Port close on quit did not complete within 1.5s - exiting anyway');
-      taskDone();
-    }, 1500);
+    if (portIsOpenUsb) {
+      var closingPath = port.path;
+      serialLog('info', 'Port ' + closingPath + ' is still open at quit - closing before exit');
 
-    try {
-      port.close(function(err) {
-        clearTimeout(safetyTimer);
-        if (err) {
-          serialLog('error', 'Error closing port ' + closingPath + ' on quit: ' + err.message);
-        } else {
-          serialLog('info', 'Port ' + closingPath + ' closed cleanly on quit');
-        }
+      // Safety net: never let a wedged driver/board (seen on some grblHAL USB-CDC
+      // implementations) block application exit indefinitely - force exit after
+      // a short timeout if the close callback never fires.
+      var safetyTimer = setTimeout(function() {
+        serialLog('warn', 'Port close on quit did not complete within 1.5s - exiting anyway');
         taskDone();
-      });
-    } catch (e) {
-      clearTimeout(safetyTimer);
-      serialLog('error', 'Exception closing port on quit: ' + e.message);
+      }, 1500);
+
+      try {
+        port.close(function(err) {
+          clearTimeout(safetyTimer);
+          if (err) {
+            serialLog('error', 'Error closing port ' + closingPath + ' on quit: ' + err.message);
+          } else {
+            serialLog('info', 'Port ' + closingPath + ' closed cleanly on quit');
+          }
+          taskDone();
+        });
+      } catch (e) {
+        clearTimeout(safetyTimer);
+        serialLog('error', 'Exception closing port on quit: ' + e.message);
+        taskDone();
+      }
+    } else {
+      serialLog('info', 'No open USB port at quit time');
       taskDone();
     }
-  } else {
-    serialLog('info', 'No open USB port at quit time');
-    taskDone();
-  }
+  });
 
-  closeBackendServers(taskDone);
+  return true;
 }
 // --- end graceful shutdown ---------------------------------------------------
 
@@ -3507,14 +3749,18 @@ if (isElectron()) {
       jogWindow.loadURL(`http://localhost:${config.webPort}/`);
       //jogWindow.webContents.openDevTools()
 
-      // P8: used to hide to tray unless forceQuit was already set elsewhere
-      // (e.g. by the tray Quit menu) - now always quits for real (Alt+F4,
-      // taskbar right-click > Close), same validated cleanup path as tray
-      // Quit/Cmd+Q/the custom titlebar X (see "minimisetotray" above).
-      // quitAndCleanup is idempotent via its own isQuitting guard, so this
-      // is harmless if a quit is already under way from another path.
+      // P8: used to hide to tray - now quits for real (Alt+F4, taskbar
+      // right-click > Close), same validated cleanup path as tray Quit/Cmd+Q/
+      // the custom titlebar X (see "minimisetotray" above). quitAndCleanup is
+      // idempotent via its own isQuitting guard, so this is harmless if a quit
+      // is already under way from another path.
+      // P9: it returns false when the user cancels the "job is running"
+      // confirmation - the window must then stay open, otherwise it would
+      // disappear anyway despite them having just said no.
       jogWindow.on('close', function(event) {
-        quitAndCleanup(0);
+        if (!quitAndCleanup(0)) {
+          event.preventDefault();
+        }
       });
 
       // Emitted when the window is closed.
@@ -3535,7 +3781,6 @@ if (isElectron()) {
     electronApp.on('ready', createApp);
 
     electronApp.on('before-quit', function() {
-      forceQuit = true;
       serialLog('info', 'before-quit event received');
     })
 
@@ -3545,8 +3790,12 @@ if (isElectron()) {
     electronApp.on('will-quit', function(event) {
       // On OS X it is common for applications and their menu bar
       // to stay active until the user quits explicitly with Cmd + Q
-      // We don't take that route, we close it completely
-      quitAndCleanup(0);
+      // We don't take that route, we close it completely.
+      // P9: cancelling the "job is running" confirmation has to abort this
+      // quit too, same as the window 'close' handler above.
+      if (!quitAndCleanup(0)) {
+        event.preventDefault();
+      }
     });
 
     // Quit when all windows are closed. On Windows this is the most common

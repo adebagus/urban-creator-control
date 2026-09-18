@@ -388,6 +388,14 @@ function initSocket() {
     if (typeof syncMachineProfileCheckbox !== 'undefined') {
       syncMachineProfileCheckbox()
     }
+    // P9: this fires on every fresh $$ dump regardless of which tab is
+    // currently open - same reason syncMachineProfileCheckbox() is called
+    // from here rather than only from grblPopulate() (which only runs when
+    // the user happens to visit the Grbl Settings tab). Keeps the read-only
+    // Hard Limit/Homing badges on the Machine Control screen live.
+    if (typeof syncHardLimitAndHomingFromFirmware !== 'undefined') {
+      syncHardLimitAndHomingFromFirmware()
+    }
   });
 
   socket.on("queueCount", function(data) {

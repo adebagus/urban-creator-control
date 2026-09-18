@@ -381,6 +381,29 @@ select {
   color: #fff !important;
 }
 
+/* P9: read-only status badges for Hard Limits ($21) / Homing ($22) on the
+   Machine Control screen - plain labels, deliberately NOT .button/.jogbtn
+   (no hover/ripple/active states, no pointer cursor) so they don't invite a
+   click that does nothing. OFF uses the same dark neutral gray as the
+   distance-toggle group's unselected text (#4a4e51); ON reuses
+   .atc-active/.jogmode-active's bright green (#22c55e) so "this setting is
+   active" reads as one consistent color language across the whole app. */
+.readonly-status-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 4px;
+  color: #fff;
+  background-color: #4a4e51;
+  cursor: default;
+  user-select: none;
+}
+
+.readonly-status-badge.status-on {
+  background-color: #22c55e;
+}
+
 .keyboardpanel td:nth-child(1) {
   width: 60px;
   height: 60px;

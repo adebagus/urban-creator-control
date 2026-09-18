@@ -286,7 +286,7 @@
               <div class="group">
                 <button class="ribbon-button" onclick="socket.emit('openbuilds', true);">
                   <span class="icon">
-                    <img src="img/openbuilds-logo.svg">
+                    <img src="/img/UrbanCreatorCONTROL.png">
                   </span>
                   <span class="caption">Urban Creator</span>
                 </button>
@@ -908,6 +908,23 @@
                         <button class="button light jogbtn" id="laserToggleBtn" onclick="toggleMachineProfile('laser')" style="width: 70px;" data-role="ripple" data-ripple-color="#fa6800" title="Switch to Laser profile: sends $32=1 (Laser mode ON) and $44=0 (disable homing cycle 1) immediately - no separate Save to Firmware needed.">
                           <span class="fas fa-fw fa-bolt icon"></span>Laser
                         </button>
+                      </td>
+                    </tr>
+
+                    <!-- P9: read-only status indicators for Hard Limits ($21)
+                         and Homing ($22) - deliberately plain <span> labels,
+                         NOT .button/.jogbtn, so they don't look clickable
+                         (they have no onclick at all - toggling these lives
+                         only in Grbl Settings, see hardlimitsenabled/
+                         homingenabled there). Kept in sync by
+                         syncHardLimitAndHomingFromFirmware() in
+                         grbl-settings.js, the same ground-truth-from-$$-dump
+                         function that already drives the checkboxes on the
+                         Grbl Settings tab. -->
+                    <tr>
+                      <td colspan="3" class="pt-2" style="text-align: center;">
+                        <span class="readonly-status-badge mr-2" id="hardLimitStatusBadge" title="Hard Limits ($21) - read-only, change this in Grbl Settings">Hard Limit: OFF</span>
+                        <span class="readonly-status-badge" id="homingStatusBadge" title="Homing ($22) - read-only, change this in Grbl Settings">Homing: OFF</span>
                       </td>
                     </tr>
 
