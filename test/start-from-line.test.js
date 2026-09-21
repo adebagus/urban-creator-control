@@ -96,7 +96,7 @@ test('dialog: "Safe Height (Z)" is a number input in mm with a sensible default 
   assert.match(input, /type="number"/);
   assert.match(input, /value="10"/);
   assert.equal(env.prefill().safe, 10);
-  assert.ok(env.dlg().content.includes('jarak (mm) di atas titik tertinggi file (Z5)'));
+  assert.ok(env.dlg().content.includes('tinggi (mm) di atas titik tertinggi file (Z5)'));
 });
 
 test('dialog: the editor is scrolled to the suggested line for context', () => {
@@ -150,7 +150,7 @@ const enabled = (env) => env.disabled['.recovery-start-button'] === false;
 test('validation: with the pre-filled values and a connected, idle machine the button is enabled, and it shows where Z goes', () => {
   const env = open();
   assert.ok(enabled(env));
-  assert.match(env.htmlOf['#recoveryStartMessages'], /Z akan naik ke <b>Z15<\/b>.*lalu pekerjaan berjalan dari baris <b>110<\/b>/);
+  assert.match(env.htmlOf['#recoveryStartMessages'], /Urutan \(mm\): <b>Z15<\/b>.*&rarr; baris <b>110<\/b>/);
 });
 
 test('validation: an invalid start line disables the button and says why; fixing it re-enables', () => {
@@ -170,7 +170,7 @@ test('validation: the start line is editable to ANY valid number, not just the r
   const env = open(120);
   env.type(37);
   assert.ok(enabled(env));
-  assert.match(env.htmlOf['#recoveryStartMessages'], /berjalan dari baris <b>37<\/b>/);
+  assert.match(env.htmlOf['#recoveryStartMessages'], /&rarr; baris <b>37<\/b>/);
 });
 
 test('validation: Safe Height must be 0-500 mm', () => {
@@ -513,13 +513,13 @@ test('entry: the dialog shows what will be sent before the start line - so nothi
   env.ctx.showStartFromLine(1, 'manual');
   env.type(22);
   const m = env.htmlOf['#recoveryStartMessages'];
-  assert.match(m, /Urutan sebelum baris 22:/);
-  assert.match(m, /Z ke <b>Z30<\/b>/); // the file's highest Z is 20 (G0Z20) + Safe Height 10
-  assert.match(m, /spindle <b>M3 S16000<\/b>/);
-  assert.match(m, /gerak cepat ke <b>X10\.263 Y11\.576<\/b>/);
-  assert.match(m, /turun ke <b>Z-4\.365 \(F150\.0\)<\/b>/);
-  assert.match(m, /feed <b>F800\.0<\/b>/);
-  assert.ok(m.indexOf('Z ke') < m.indexOf('spindle') && m.indexOf('spindle') < m.indexOf('gerak cepat'), 'in the order they are sent');
+  assert.match(m, /Urutan \(mm\):.*&rarr; baris <b>22<\/b>/);
+  assert.match(m, /<b>Z30<\/b>/); // the file's highest Z is 20 (G0Z20) + Safe Height 10
+  assert.match(m, /<b>M3 S16000<\/b>/);
+  assert.match(m, /<b>X10\.263 Y11\.576<\/b>/);
+  assert.match(m, /<b>Z-4\.365 \(F150\.0\)<\/b>/);
+  assert.match(m, /<b>F800\.0<\/b>/);
+  assert.ok(m.indexOf('Z30') < m.indexOf('M3 S16000') && m.indexOf('M3 S16000') < m.indexOf('X10.263'), 'in the order they are sent');
 });
 
 test('entry: the scan is done once per set of numbers - the 500 ms refresh does not redo it', () => {
@@ -894,8 +894,7 @@ test('dialog: a red-orange warning says the machine moves IMMEDIATELY - it sits 
 test('dialog: the preview of what will run is still shown (it must be reviewed BEFORE the final click)', () => {
   const env = open(120);
   const m = env.htmlOf['#recoveryStartMessages'];
-  assert.match(m, /Z akan naik ke <b>Z15<\/b> \(mm, koordinat kerja\), lalu pekerjaan berjalan dari baris <b>110<\/b>\./);
-  assert.match(m, /Urutan sebelum baris 110: Z ke <b>Z15<\/b> &rarr; spindle <b>M3 S12000<\/b> &rarr; gerak cepat ke <b>X109 Y4<\/b> &rarr; turun ke <b>Z-1 \(F300\)<\/b> &rarr; feed <b>F800<\/b>\./);
+  assert.match(m, /Urutan \(mm\): <b>Z15<\/b> &rarr; <b>M3 S12000<\/b> &rarr; <b>X109 Y4<\/b> &rarr; <b>Z-1 \(F300\)<\/b> &rarr; <b>F800<\/b> &rarr; baris <b>110<\/b>/);
 });
 
 // ============================================================ nothing is left armed - the mechanism is gone
@@ -1012,4 +1011,30 @@ test('kept: the right-click item still calls startFromHere, the ribbon still cal
   const html = read('app/index.html');
   assert.match(html, /onclick="startFromHere\(editor\.getSelectionRange\(\)\.start\.row \+ 1\);"[^>]*>[^]*?Recover job from Line/);
   assert.match(html, /id="recoverJobBtn"[^>]*onclick="recoverCrashedJob\(\);"/);
+});
+
+// ============================================================ compact dialog (the action button must stay on screen)
+
+test('compact: the entry sequence is ONE dense line, always visible (no collapsed/hidden part), and the old wordy text is gone', () => {
+  const env = open(120);
+  const m = env.htmlOf['#recoveryStartMessages'];
+  assert.equal((m.match(/Urutan \(mm\):/g) || []).length, 1);
+  assert.ok(!/Urutan sebelum baris|Z akan naik ke/.test(m), 'no second sentence repeating where Z goes');
+  assert.ok(!/<details|display:\s*none|hidden/.test(env.dlg().content + m), 'nothing the user must see is hidden behind a toggle');
+  const html = env.dlg().content;
+  assert.ok(!/rinciannya tampil|dikirim ulang lebih dulu/.test(html), 'the explanatory paragraph under the Home/Set Zero note is gone');
+  assert.ok(html.includes('Pastikan mesin sudah di-Home dan Set Zero ulang sebelum melanjutkan.'), 'the safety note stays');
+  assert.ok(html.includes('recovery-start-warn'), 'the orange warning stays');
+});
+
+test('compact: the dialog body scrolls on a short screen so the action button stays visible', () => {
+  const env = open(120);
+  assert.equal(env.dlg().clsContent, 'recovery-start-content');
+  const css = read('app/css/main.css');
+  assert.match(css, /\.recovery-start-content \{\s*max-height: calc\(100vh - \d+px\);\s*overflow-y: auto;/);
+});
+
+test('compact: no "other file" block in any source, and the function no longer takes it', () => {
+  assert.ok(!/otherFile/.test(RESUME));
+  assert.ok(!/Ada data job tersimpan untuk file lain/.test(RESUME));
 });

@@ -182,7 +182,8 @@ test('ribbon: a saved job that belongs to ANOTHER file (or a differently spelled
     assert.match(env.dlg().content, /Anda bebas mulai dari baris mana pun/, 'the user chooses the line');
     assert.ok(!/terhenti/.test(env.dlg().content), 'the other file\'s crash is not presented as this file\'s');
     assert.equal(env.prefill().start, 1, 'not the other file\'s saved line');
-    assert.ok(env.dlg().content.includes('Ada data job tersimpan untuk file lain (<b>' + saved.replace(/&/g, '&amp;') + '</b>). Tidak dipakai karena file yang dimuat berbeda.'), 'and it says so');
+    assert.ok(!/Ada data job tersimpan|Tidak dipakai/.test(env.dlg().content), 'and it does not explain why the record is unused');
+    assert.ok(!env.dlg().content.includes(saved.replace(/&/g, '&amp;')), 'the other file name is not shown at all');
   }
 });
 
@@ -435,7 +436,7 @@ test('wiring: the button opens the dialog in one place - the saved line only whe
   const rj = extractFunction(RESUME, 'recoverJob');
   assert.match(rj, /if \(!recoveryEditorHasProgram\(\)\) \{\n    showRecoveryNoFile\(/);
   assert.match(rj, /if \(usable && recoveryRecordMatchesFile\(info\)\) \{\n    recoveryStartAt\(info\.resumeLine\);/);
-  assert.match(rj, /showStartFromLine\(1, 'manual', usable \? info\.fileName : ''\)/);
+  assert.match(rj, /showStartFromLine\(1, 'manual'\)/);
   assert.match(extractFunction(RESUME, 'recoveryStartAt'), /showStartFromLine\(stoppedLine, 'recovery'\)/);
   assert.ok(!/runJob|sendGcode|setValue|POST|#file/.test(rj + extractFunction(RESUME, 'recoveryStartAt')), 'it only opens a dialog');
   const rc = extractFunction(RESUME, 'recoverCrashedJob');

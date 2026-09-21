@@ -169,7 +169,7 @@ function recoverJob(info) {
     return;
   }
   // no saved job, or one that belongs to another file: the user chooses the line
-  showStartFromLine(1, 'manual', usable ? info.fileName : '');
+  showStartFromLine(1, 'manual');
 }
 
 // Offered by the server when a client connects and an unfinished job is on
@@ -577,15 +577,12 @@ function recoveryConnectionStatus() {
 }
 
 // ---- the dialog ------------------------------------------------------------
-function recoveryStartDialogHtml(stoppedLine, source, total, facts, suggested, otherFile) {
+function recoveryStartDialogHtml(stoppedLine, source, total, facts, suggested) {
   var html = '<p>Melanjutkan pekerjaan setelah listrik mati, koneksi putus, atau gangguan lain.</p>';
   if (source === 'recovery') {
     html += '<div class="remark info">Pekerjaan Anda (total <b>' + total + '</b> baris) terhenti sekitar baris <b>' + stoppedLine + '</b>.</div>';
   } else if (source === 'manual') {
     html += '<div class="remark info">File ini punya <b>' + total + '</b> baris. Anda bebas mulai dari baris mana pun.</div>';
-    if (otherFile) {
-      html += '<div class="remark warning text-small">Ada data job tersimpan untuk file lain (<b>' + recoveryEscapeHtml(otherFile) + '</b>). Tidak dipakai karena file yang dimuat berbeda.</div>';
-    }
   } else {
     html += '<div class="remark info">Anda memilih baris <b>' + stoppedLine + '</b> (total <b>' + total + '</b> baris).</div>';
   }
@@ -599,15 +596,13 @@ function recoveryStartDialogHtml(stoppedLine, source, total, facts, suggested, o
     '<input id="recoveryStartLine" data-prepend="Mulai dari baris:" type="number" min="1" max="' + total + '" step="1" data-role="input" data-clear-button="false" value="' + suggested + '" data-editable="true"></input>' +
     '<input id="recoverySafeZ" data-prepend="Safe Height (Z), mm:" type="number" min="0" max="' + RECOVERY_MAX_SAFE_Z + '" step="1" data-role="input" data-clear-button="false" value="' + RECOVERY_DEFAULT_SAFE_Z + '" data-editable="true"></input>' +
     '</div>' +
-    '<div class="text-small">Safe Height = jarak (mm) di atas titik tertinggi file' +
+    '<div class="text-small">Safe Height = tinggi (mm) di atas titik tertinggi file' +
     (facts.maxZ === null ? '' : ' (Z' + facts.maxZ + (facts.inch ? ' inci' : '') + ')') +
-    '. Hanya dipakai untuk satu gerakan naik (G0 Z) sebelum mulai.</div>' +
+    ', untuk satu gerakan naik sebelum mulai.</div>' +
     '<div id="recoveryStartMessages"></div>' +
     '<div class="recovery-start-warn" role="alert"><b>Mesin akan LANGSUNG bergerak begitu tombol di bawah diklik:</b> Z naik, spindle menyala, ' +
     'gerak cepat ke titik awal, turun, lalu memotong dari baris yang dipilih. Pantau di 3D View dan siap menekan Stop.</div>' +
-    '<div class="recovery-start-note"><b>Pastikan mesin sudah di-Home dan Set Zero ulang sebelum melanjutkan.</b><br>' +
-    '<span class="text-small">Baris pembuka file (satuan, mode) dikirim ulang lebih dulu, lalu spindle, feed, dan gerak masuk ke titik awal baris itu ' +
-    '(dibaca dari isi file sebelum baris tersebut; rinciannya tampil di atas).</span></div>';
+    '<div class="recovery-start-note"><b>Pastikan mesin sudah di-Home dan Set Zero ulang sebelum melanjutkan.</b></div>';
   return html;
 }
 
@@ -617,21 +612,23 @@ function recoveryStartMessagesHtml(plan) {
     html += '<div class="recovery-start-error">' + recoveryEscapeHtml(e) + '</div>';
   });
   if (plan.ok) {
-    html += '<div class="text-small">Z akan naik ke <b>Z' + plan.targetZ + '</b> (mm, koordinat kerja), lalu pekerjaan berjalan dari baris <b>' + plan.start + '</b>.</div>';
     if (plan.entry) {
+      // one dense line, always visible: the whole entry sequence, then the start line
       var e = plan.entry.summary;
-      var steps = ['Z ke <b>' + recoveryEscapeHtml(e.safeZ.replace('G0 ', '')) + '</b>'];
-      if (e.spindle) steps.push('spindle <b>' + recoveryEscapeHtml(e.spindle) + '</b>');
-      if (e.xy) steps.push('gerak cepat ke <b>' + recoveryEscapeHtml(e.xy.replace('G0 ', '')) + '</b>');
-      if (e.plunge) steps.push('turun ke <b>' + recoveryEscapeHtml(e.plunge.replace('G1 ', '').replace(' F', ' (F')) + ')</b>');
-      if (e.feed) steps.push('feed <b>' + recoveryEscapeHtml(e.feed) + '</b>');
-      html += '<div class="text-small">Urutan sebelum baris ' + plan.start + ': ' + steps.join(' &rarr; ') + '.</div>';
+      var steps = [recoveryEscapeHtml(e.safeZ.replace('G0 ', ''))];
+      if (e.spindle) steps.push(recoveryEscapeHtml(e.spindle));
+      if (e.xy) steps.push(recoveryEscapeHtml(e.xy.replace('G0 ', '')));
+      if (e.plunge) steps.push(recoveryEscapeHtml(e.plunge.replace('G1 ', '').replace(' F', ' (F')) + ')');
+      if (e.feed) steps.push(recoveryEscapeHtml(e.feed));
+      html += '<div class="text-small">Urutan (mm): <b>' + steps.join('</b> &rarr; <b>') + '</b> &rarr; baris <b>' + plan.start + '</b></div>';
+    } else {
+      html += '<div class="text-small">Z akan naik ke <b>Z' + plan.targetZ + '</b> (mm, koordinat kerja), lalu pekerjaan berjalan dari baris <b>' + plan.start + '</b>.</div>';
     }
   }
   return html;
 }
 
-function showStartFromLine(stoppedLine, source, otherFile) {
+function showStartFromLine(stoppedLine, source) {
   stoppedLine = parseInt(stoppedLine, 10);
   if (!(stoppedLine >= 1)) stoppedLine = 1;
   var programText = recoveryProgramText();
@@ -654,7 +651,8 @@ function showStartFromLine(stoppedLine, source, otherFile) {
   Metro.dialog.create({
     title: "<i class='fas fa-fw fa-route'></i> Lanjutkan dari Baris" +
       "<div class='recovery-title-en'>Start From Line</div>",
-    content: recoveryStartDialogHtml(stoppedLine, source, total, facts, suggested, otherFile),
+    content: recoveryStartDialogHtml(stoppedLine, source, total, facts, suggested),
+    clsContent: 'recovery-start-content',
     clsDialog: 'dark',
     closeButton: true,
     actions: [{

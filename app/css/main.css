@@ -589,6 +589,12 @@ select {
   border: 1px solid #999999;
 }
 
+/* the dialog body scrolls if the screen is short, so the action button below it stays on screen */
+.recovery-start-content {
+  max-height: calc(100vh - 230px);
+  overflow-y: auto;
+}
+
 .recovery-start-button:disabled {
   opacity: 0.4;
   cursor: not-allowed;

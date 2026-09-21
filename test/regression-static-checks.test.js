@@ -353,7 +353,7 @@ test('P9 recovery: the renderer never puts server-supplied text into HTML unesca
   // Any place a name reaches an HTML string must go through the escaper.
   const raw = src.match(/['"]\s*\+\s*(info\.fileName|loadedFileName)\s*\+\s*['"]/g) || [];
   assert.deepEqual(raw, [], 'raw file-name concatenation found: ' + raw.join(' | '));
-  for (const needle of ['recoveryEscapeHtml(info.fileName)', 'recoveryEscapeHtml(otherFile)', 'recoveryEscapeHtml(savedName)']) {
+  for (const needle of ['recoveryEscapeHtml(info.fileName)', 'recoveryEscapeHtml(savedName)']) {
     assert.ok(src.includes(needle), needle + ' expected');
   }
   // Numbers are coerced, not interpolated as-is (the info panel's line numbers).
