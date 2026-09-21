@@ -468,7 +468,10 @@ function initSocket() {
 
     if (laststatus) {
       if (laststatus.comms.connectionStatus == 3) {
-        editor.gotoLine(data[1] - data[0]);
+        // data[2] = the original-file line the server just sent (tracked jobs). Without it
+        // (probing, console commands) the queue index is the best available guess.
+        var activeLine = (Number.isInteger(data[2]) && data[2] >= 1) ? data[2] : data[1] - data[0];
+        editor.gotoLine(activeLine);
       }
       if (typeof object !== 'undefined' && done > 0) {
         if (object.userData !== 'undefined' && object.userData && object.userData.linePoints.length > 2) {

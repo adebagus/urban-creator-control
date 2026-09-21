@@ -2600,6 +2600,13 @@ function machineSend(gcode, realtime) {
       var data = []
       data.push(queueLeft);
       data.push(queueTotal);
+      // Third element: the line of the ORIGINAL FILE just sent (queuePointer was already
+      // advanced, so it is queue index queuePointer-1), via the same mapping as the recovery
+      // record. The queue index alone is not a file line (blank/comment lines are dropped,
+      // "$G" entries are added, "Start from Line" sends a slice). Left out for jobs that
+      // are not tracked (probing, console commands): the client then falls back.
+      var sourceLine = (queuePointer >= 1 && queuePointer <= gcodeQueue.length) ? jobRecovery.sourceLineAt(queuePointer - 1) : null;
+      if (sourceLine !== null) data.push(sourceLine);
       io.sockets.emit("queueCount", data);
       // debug_log(gcode)
       port.write(gcode);

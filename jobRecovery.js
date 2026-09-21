@@ -279,6 +279,14 @@ function createJobRecovery(opts) {
     };
   }
 
+  // The ORIGINAL-FILE line that queue index q belongs to, for the editor's active-line
+  // highlight: the same mapping as the resume line (marks + lineOffset). null when no
+  // tracked job is active or q is not a valid index - the caller then falls back.
+  function sourceLineAt(q) {
+    if (!active || !Number.isInteger(q) || q < 0) return null;
+    return computeResumeLine(active, q);
+  }
+
   function isTracking() {
     return active !== null;
   }
@@ -291,6 +299,7 @@ function createJobRecovery(opts) {
     onIdle: onIdle,
     clear: clear,
     peek: peek,
+    sourceLineAt: sourceLineAt,
     isTracking: isTracking
   };
 }
