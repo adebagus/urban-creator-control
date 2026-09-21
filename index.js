@@ -719,6 +719,26 @@ var status = {
   }
 };
 
+// P9: server-side "Recover Job" persistence (see jobRecovery.js for the why).
+// The callbacks read live sender state lazily, so it doesn't matter that
+// gcodeQueue/queuePointer/sentBuffer are declared above/below this line.
+const jobRecovery = require('./jobRecovery').createJobRecovery({
+  getDir: getUserDataDir,
+  log: serialLog,
+  // Queue index of the oldest line the controller has NOT yet acknowledged:
+  // lines sent minus lines still awaiting their "ok" (sentBuffer holds exactly
+  // those, in order - send1Q is the only non-realtime sender). "sent" is not
+  // "acknowledged": counting sent lines would skip work still in the buffer.
+  // -1 means the queue was dumped (alarm reset etc.) and nothing meaningful
+  // can be read from it any more.
+  getFirstUnackedQ: function() {
+    if (gcodeQueue.length === 0) return -1;
+    return Math.max(0, queuePointer - sentBuffer.length);
+  },
+  getPlannerBlocks: function() {
+    return parseInt(status.machine.firmware.blockBufferSize) || 0;
+  }
+});
 
 async function findPorts() {
   const ports = await SerialPort.list()
@@ -804,6 +824,11 @@ app.post('/runjob', (req, res) => {
     } else if (err) {
       return res.send(err);
     }
+    // P9: the uploaded blob is always named "upload.gcode" (see runJobFile()
+    // in app/js/main.js), so the real file name travels in a separate form
+    // field. Untrusted text: jobRecovery sanitises it on write and read, and
+    // the renderer escapes it on display.
+    var recoveryFileName = (req.body && typeof req.body.fileName === 'string') ? req.body.fileName : '';
     fs.readFile(req.file.path, 'utf8', function(err, data) {
       if (err) {
         return console.log(err);
@@ -812,6 +837,7 @@ app.post('/runjob', (req, res) => {
         isJob: true,
         //completedMsg: "",
         data: data,
+        fileName: recoveryFileName,
       }
       runJob(object)
     });
@@ -895,6 +921,33 @@ io.on("connection", function(socket) {
   sysinfoUpdateLoop = setInterval(function() {
     io.sockets.emit("sysinfo", systemInformation);
   }, 1000 * 60);
+
+  // P9: an unfinished job left over from an earlier run (crash, USB pulled,
+  // app closed mid-job, or a Stop) is offered to this newly-connected client.
+  // Skipped while a job is actually being tracked - a renderer reload or a
+  // phone connecting mid-job must not be told the LIVE job "needs recovery".
+  // The client decides whether to show it (the LAN Jog-from-Phone page won't).
+  if (!jobRecovery.isTracking()) {
+    var pendingRecovery = jobRecovery.peek();
+    if (pendingRecovery) {
+      socket.emit("recoveryOffer", pendingRecovery);
+    }
+  }
+
+  // On-demand read for the "Recover Job" ribbon button: always current, so the
+  // client never holds a stale copy. Answered through the socket.io ack.
+  socket.on("getRecoveryInfo", function(ack) {
+    if (typeof ack !== 'function') return;
+    ack(jobRecovery.isTracking() ? null : jobRecovery.peek());
+  });
+
+  // The user explicitly declined to recover: forget it. Never while a job is
+  // running - that record belongs to the live job, not to a leftover.
+  socket.on("discardRecovery", function() {
+    if (!jobRecovery.isTracking()) {
+      jobRecovery.clear('discarded by user');
+    }
+  });
 
   socket.on("scannetwork", function(data) {
     scanForTelnetDevices(data)
@@ -2409,11 +2462,17 @@ io.on("connection", function(socket) {
           break;
         case 2:
           debug_log('Emptying Queue');
+          announceJobStopped('alarm-reset'); // before the dump below
           status.comms.queue = 0
           queuePointer = 0;
           gcodeQueue.length = 0; // Dump the queue
           sentBuffer.length = 0; // Dump bufferSizes
           queuePointer = 0;
+          // Same as stop(): a dumped queue means a dead job - drop its start
+          // time and completion message so the next command's "ok" doesn't emit
+          // a jobComplete with them.
+          jobStartTime = false;
+          jobCompletedMsg = "";
           debug_log('Clearing Lockout');
           switch (status.machine.firmware.type) {
             case 'grbl':
@@ -2568,15 +2627,39 @@ function runJob(object) {
   if (status.comms.connectionStatus > 0) {
     if (data) {
       data = data.split('\n');
+      // P9: only real jobs are tracked for recovery - not probing routines,
+      // bounding-box moves or console commands (isJob:false).
+      var trackRecovery = (object.isJob === true);
+      var recoveryMarks = [];
       for (var i = 0; i < data.length; i++) {
 
         var line = data[i].replace("%", "").split(';'); // Remove everything after ; = comment
         var tosend = line[0].trim();
         if (tosend.length > 0) {
+          // P9: remember which SOURCE line this queue entry came from. Blank
+          // and comment-only lines are dropped above and addQToEnd() injects
+          // extra "$G" entries, so queue index != editor line. Recording the
+          // queue length just before the push (rather than re-deriving
+          // addQToEnd's rules) keeps this correct however that function's
+          // insertion rules change.
+          if (trackRecovery) {
+            recoveryMarks.push({
+              q: gcodeQueue.length,
+              line: i + 1
+            });
+          }
           addQToEnd(tosend);
         }
       }
       if (i > 0) {
+        if (trackRecovery) {
+          jobRecovery.begin({
+            fileName: object.fileName,
+            lineOffset: object.lineOffset, // set by callers that send a slice of the editor
+            lineCount: data.length,
+            marks: recoveryMarks
+          });
+        }
         // Start interval for qCount messages to socket clients
         queueCounter = setInterval(function() {
           status.comms.queue = gcodeQueue.length - queuePointer
@@ -2594,7 +2677,39 @@ function runJob(object) {
   }
 }
 
+// Tell the clients that a job which had started streaming was cut short (Stop
+// button, USB pulled, alarm reset), so the renderer can record it in the job
+// history as an INCOMPLETE run with the real start and stop times.
+//
+// This is deliberately its own event, not a variant of "jobComplete": the
+// stale-state bug produced a jobComplete{failed:true} carrying an old
+// jobStartTime, which is indistinguishable in shape from a legitimate stopped
+// job. Keeping the two on separate channels means the "jobComplete" handler can
+// refuse to write history for anything failed, and this event can only ever be
+// produced right here, at the moment a real job dies.
+//
+// A job is "real and in progress" only if runJob(isJob) stamped jobStartTime
+// AND lines are still queued: jobStartTime is cleared when the last line is
+// sent (send1Q) and by every queue dump, and a lone console command never sets
+// it. MUST be called before the caller resets jobStartTime / dumps the queue.
+function announceJobStopped(reason) {
+  if (jobStartTime && gcodeQueue.length > 0) {
+    io.sockets.emit('jobStopped', {
+      completed: false,
+      reason: reason, // 'stopped' | 'interrupted' | 'alarm-reset'
+      jobStartTime: jobStartTime,
+      jobEndTime: new Date().getTime()
+    });
+  }
+}
+
 function stopPort() {
+  // P9: every way the connection goes away mid-job funnels through here (USB
+  // pulled -> port "close"/"error", the Disconnect button, firmware flashing).
+  // Snapshot BEFORE the queue is wiped a few lines down. No-op if no tracked
+  // job is running.
+  jobRecovery.finish('interrupted');
+  announceJobStopped('interrupted');
   clearInterval(queueCounter);
   clearInterval(statusLoop);
   if (jogWindow) {
@@ -2609,6 +2724,18 @@ function stopPort() {
   status.machine.firmware.buffer = "";
   gcodeQueue.length = 0;
   sentBuffer.length = 0; // dump bufferSizes
+  // The queue is gone, so the job-scoped state that goes with it must go too.
+  // queuePointer used to be left at its old value: after a USB pull mid-job
+  // the first command sent on reconnect saw "length 1 - pointer 151 < 0", was
+  // silently NOT written to the port, and tripped the "job complete" branch of
+  // send1Q with the old jobStartTime (bogus "JOB COMPLETE" log + junk job
+  // history entry). A NEW job started before any other command would have
+  // begun at line 152 instead of line 1. Every place that dumps the queue
+  // (this, stop(), clearAlarm method 2, send1Q's completion) must reset the
+  // same three variables - test/reconnect-stale-state.test.js enforces it.
+  queuePointer = 0;
+  jobStartTime = false;
+  jobCompletedMsg = "";
 
   if (typeof port === 'undefined' || !port) {
     return; // never connected - nothing to close
@@ -2870,6 +2997,11 @@ function quitAndCleanup(exitCode) {
 
   isQuitting = true;
 
+  // P9: the quit is going ahead (any confirmation above has been answered).
+  // Sync-write the recovery snapshot NOW, before the stop sequence and port
+  // close below change the picture - the process may exit right after.
+  jobRecovery.finish('interrupted');
+
   serialLog('info', 'Quit requested - beginning shutdown cleanup');
 
   if (appIcon) {
@@ -2944,6 +3076,12 @@ function parseFeedback(data) {
   //debug_log(data)
   var state = data.substring(1, data.search(/(,|\|)/));
   status.comms.runStatus = state
+  // P9: this is where a job is known to have REALLY finished - controller
+  // Idle with no line left unacknowledged - so this (not "last line sent") is
+  // when the recovery record is cleared.
+  if (state == "Idle") {
+    jobRecovery.onIdle(sentBuffer.length === 0);
+  }
   if (state == "Alarm") {
     // debug_log("ALARM:  " + data)
     status.comms.connectionStatus = 5;
@@ -3417,6 +3555,12 @@ function send1Q() {
         break;
     }
     if (queuePointer >= gcodeQueue.length) {
+      // P9: every line has been SENT - not executed. The controller still
+      // holds the tail in its RX buffer and planner, so keep the recovery
+      // record (state "completing") until it reports Idle with everything
+      // acknowledged (see parseFeedback). Must run before the queue is dumped
+      // below: it reads the live queue. No-op when no tracked job is active.
+      jobRecovery.markFullySent();
       if (gcodeQueue.length > 1) {
         var data = {
           completed: true,
@@ -3850,6 +3994,18 @@ if (isElectron()) {
 function stop(data) {
   //data = { stop: false, jog: false, abort: true}
   if (status.comms.connectionStatus > 0) {
+    // P9: snapshot where the job had got to BEFORE the queue is dumped below.
+    // The record is deliberately KEPT (state "stopped"): "Recover a stopped
+    // job" is exactly what the ribbon button is for (tool broke -> Stop ->
+    // swap tool -> resume). It is cleared when the job completes, when the
+    // user discards it, or when the next job starts. A jog-cancel (data.jog)
+    // is not a job stop.
+    if (!(data && data.jog)) {
+      jobRecovery.finish('stopped');
+    }
+    // Before the resets further down clear jobStartTime and the queue. Applies
+    // to a jog-cancel too: it dumps the whole queue, so a running job is dead.
+    announceJobStopped('stopped');
     status.comms.paused = true;
     debug_log('STOP');
     switch (status.machine.firmware.type) {
@@ -3890,6 +4046,12 @@ function stop(data) {
     gcodeQueue.length = 0; // Dump the queue
     sentBuffer.length = 0; // Dump the queue
     // sentBuffer.length = 0; // Dump bufferSizes
+    // The job is dead along with its queue: drop its start time and completion
+    // message too. Left set, the next command's "ok" reached send1Q's empty-
+    // queue branch and emitted a jobComplete carrying the OLD jobStartTime
+    // (bogus "JOB COMPLETE" log + junk job-history entry after every Stop).
+    jobStartTime = false;
+    jobCompletedMsg = "";
     laserTestOn = false;
     status.comms.blocked = false;
     status.comms.paused = false;

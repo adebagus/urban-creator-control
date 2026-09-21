@@ -2,14 +2,100 @@
 // as per https://github.com/OpenBuilds/OpenBuilds-CONTROL/issues/96#issuecomment-1420150128
 // Thanks @rlwoodjr
 
+// P9: the suggested start line used to come from localStorage.gcodeLineNumber
+// (a browser-side queue index that drifted from the real line and was never
+// cleared). It now comes from the SERVER, which persists a true source line
+// number to disk (see jobRecovery.js / job-recovery.json in userData), so it
+// survives an app restart and a crash.
+
+// Everything from the server is untrusted text (the file name in particular
+// originates from a client-supplied form field) and this renderer runs with
+// nodeIntegration, so nothing may be interpolated into HTML unescaped.
+// NOTE: despite the name this is the app's shared HTML escaper - it is also
+// used by wizards/jobstats/jobstats.js (showJobLog). Keep it defined, and
+// resume.js loaded on the desktop page, or the job history dialog breaks.
+function recoveryEscapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, function(ch) {
+    return {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;'
+    } [ch];
+  });
+}
+
+function recoveryDescribe(info) {
+  var when = info.savedAt > 0 ? new Date(info.savedAt).toLocaleString() : 'unknown time';
+  var what;
+  if (info.state == 'stopped') {
+    what = 'The job was stopped';
+  } else if (info.state == 'interrupted') {
+    what = 'The job was interrupted (connection lost, alarm, or the application was closed)';
+  } else {
+    // "running"/"completing" still on disk at startup: the previous run died
+    what = 'The application closed or the connection was lost while the job was still running';
+  }
+  var html = recoveryEscapeHtml(what) + ' - last saved ' + recoveryEscapeHtml(when) + '.';
+  if (info.fileName) {
+    html += '<br>File: <b>' + recoveryEscapeHtml(info.fileName) + '</b>';
+  }
+  html += '<br>Resume line saved: <b>' + parseInt(info.resumeLine, 10) + '</b>';
+  if (info.totalLines > 0) {
+    html += ' of ' + parseInt(info.totalLines, 10);
+  }
+  return html;
+}
+
+// Ask the server for the current recovery data, then open the wizard.
 function recoverCrashedJob() {
-  if (localStorage.getItem('gcodeLineNumber')) {
-    var lineNumber = localStorage.getItem('gcodeLineNumber')
-    if (lineNumber > editor.session.getLength()) { // Wrong file
+  if (typeof socket === 'undefined' || !socket) {
+    openRecoverDialog(null);
+    return;
+  }
+  var answered = false;
+  // If the server can't answer (disconnected) don't leave the user with a dead
+  // button - fall back to the plain manual dialog, starting at line 1.
+  var fallback = setTimeout(function() {
+    if (!answered) {
+      answered = true;
+      openRecoverDialog(null);
+    }
+  }, 2000);
+  socket.emit('getRecoveryInfo', function(info) {
+    if (answered) return;
+    answered = true;
+    clearTimeout(fallback);
+    openRecoverDialog(info);
+  });
+}
+
+function openRecoverDialog(info) {
+  var lineNumber = 1;
+  var infoBlock = '';
+
+  if (info && Number.isInteger(info.resumeLine) && info.resumeLine >= 1) {
+    lineNumber = info.resumeLine;
+    var warnings = '';
+
+    // Wrong file? Compare by name first (the server now records it), then by
+    // length as before.
+    if (info.fileName && typeof loadedFileName !== 'undefined' && loadedFileName && loadedFileName != info.fileName) {
+      warnings += '<br><span class="fg-red">The loaded file is <b>' + recoveryEscapeHtml(loadedFileName) +
+        '</b>, not <b>' + recoveryEscapeHtml(info.fileName) + '</b> - open the original file before recovering.</span>';
+    }
+    if (lineNumber > editor.session.getLength()) {
+      warnings += '<br><span class="fg-red">The saved line is beyond the end of the loaded GCODE - this is probably the wrong file. Starting from line 1 instead.</span>';
       lineNumber = 1;
     }
-  } else {
-    var lineNumber = 1;
+    // "ok" from the controller means a line was accepted into its planner, not
+    // that it finished moving. Say so, rather than let the number look exact.
+    if (info.plannerBlocks > 0) {
+      warnings += '<br><span class="text-small">The controller can hold up to ' + parseInt(info.plannerBlocks, 10) +
+        ' already-acknowledged moves in its planner. If the machine was reset or lost power, some of those never ran - consider starting a few lines earlier.</span>';
+    }
+    infoBlock = '<div class="remark info">' + recoveryDescribe(info) + warnings + '</div><hr>';
   }
 
   var resumeTemplate = `
@@ -18,7 +104,8 @@ function recoverCrashedJob() {
     <br>
     <span class="text-small">(Make sure you opened the GCODE first)</span>
     <hr>
-    <input id="selectedLineNumber" data-prepend="<i class='fas fa-list-ol'></i> Start from line: " type="number" data-role="input"  data-clear-button="false" value="` + lineNumber + `" data-editable="true"></input>
+    ` + infoBlock + `
+    <input id="selectedLineNumber" data-prepend="<i class='fas fa-list-ol'></i> Start from line: " type="number" data-role="input"  data-clear-button="false" value="` + parseInt(lineNumber, 10) + `" data-editable="true"></input>
     <hr>
     <input type="checkbox" data-role="checkbox" data-caption="Use Work Coordinates for Z-Safe Move:" data-caption-position="left" id="recoveryUseWpos">
   </form>
@@ -30,27 +117,95 @@ function recoverCrashedJob() {
     NOTE: Use this tool at your own risk. Recovering GCODE is a risky operation. You are also responsible for ensuring that work origin is correctly set.  Use at your own risk.
   </div>
   `
+  var actions = [{
+      caption: "Proceed to next step",
+      cls: "js-dialog-close alert",
+      onclick: function() {
+        startFromHere($("#selectedLineNumber").val());
+      }
+    },
+    {
+      caption: "Cancel",
+      cls: "js-dialog-close",
+      onclick: function() {}
+    }
+  ];
+  if (info) {
+    // Explicitly forget the saved job (e.g. it was abandoned on purpose).
+    actions.splice(1, 0, {
+      caption: "Discard saved job",
+      cls: "js-dialog-close",
+      onclick: function() {
+        socket.emit('discardRecovery');
+      }
+    });
+  }
+
   Metro.dialog.create({
     title: "<i class='fas fa-fw fa-route'></i> Recover Job From Line Number",
     content: resumeTemplate,
     //toTop: true,
     //width: '75%',
     clsDialog: 'dark',
-    actions: [{
-        caption: "Proceed to next step",
-        cls: "js-dialog-close alert",
-        onclick: function() {
-          startFromHere($("#selectedLineNumber").val());
-        }
-      },
-      {
-        caption: "Cancel",
-        cls: "js-dialog-close",
-        onclick: function() {}
-      }
-    ]
+    actions: actions
   });
 };
+
+// Offered by the server when a client connects and an unfinished job is on
+// record. One dialog at a time - a machine reconnect or a reload can deliver
+// the same offer again while it is still on screen.
+var recoveryOfferOpen = false;
+
+function showRecoveryOffer(info) {
+  if (recoveryOfferOpen) return;
+  if (!info || !Number.isInteger(info.resumeLine) || info.resumeLine < 1) return;
+
+  // The splash screen (z-index 2000) covers the page for the first ~2s; don't
+  // create a modal underneath it. Poll until it is gone.
+  var tries = 0;
+  (function whenReady() {
+    if ($('#splash').is(':visible') && tries++ < 40) {
+      setTimeout(whenReady, 300);
+      return;
+    }
+    if (recoveryOfferOpen) return;
+    recoveryOfferOpen = true;
+
+    var noFile = (typeof editor === 'undefined') || editor.session.getLength() < 2;
+    var body = '<div class="remark warning">' + recoveryDescribe(info) + '</div>' +
+      (noFile ? '<p>Open the GCODE file first, then choose <b>Recover job</b>.</p>' : '') +
+      '<p class="text-small">Choose <b>Recover job</b> to review the recovery steps, <b>Discard</b> to forget this job permanently, or <b>Later</b> to decide next time.</p>';
+
+    Metro.dialog.create({
+      title: "<i class='fas fa-fw fa-route'></i> Unfinished job found",
+      content: body,
+      clsDialog: 'dark',
+      onClose: function() {
+        recoveryOfferOpen = false;
+      },
+      actions: [{
+          caption: "Recover job",
+          cls: "js-dialog-close alert",
+          onclick: function() {
+            recoverCrashedJob();
+          }
+        },
+        {
+          caption: "Discard",
+          cls: "js-dialog-close",
+          onclick: function() {
+            socket.emit('discardRecovery');
+          }
+        },
+        {
+          caption: "Later",
+          cls: "js-dialog-close",
+          onclick: function() {}
+        }
+      ]
+    });
+  })();
+}
 
 
 function startFromHere(lineNumber) {

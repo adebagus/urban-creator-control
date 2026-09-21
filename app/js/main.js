@@ -11,24 +11,35 @@ document.addEventListener("contextmenu", function(e) {
 
 function setWindowTitle(status) {
 
+  // Two variants of the same text, deliberately kept apart:
+  //  - string     : raw text, for document.title (a native API, not an HTML sink;
+  //                 escaping it would show literal "&lt;" in the OS title bar)
+  //  - htmlString : HTML-escaped dynamic parts, for $().html() (nodeIntegration
+  //                 is on, so unescaped file names would be code execution).
+  // recoveryEscapeHtml() is the shared escaper from wizards/resume/resume.js.
   var string = ""
+  var htmlString = ""
 
   if (status) {
     string += " v" + status.driver.version
+    htmlString += " v" + recoveryEscapeHtml(status.driver.version)
   } else if (laststatus) {
     string += " v" + laststatus.driver.version
+    htmlString += " v" + recoveryEscapeHtml(laststatus.driver.version)
   }
 
 
   if (loadedFileName.length > 0) {
     string += " / " + loadedFileName
+    htmlString += " / " + recoveryEscapeHtml(loadedFileName)
   }
 
   if (!nostatusyet && laststatus.comms.interfaces.activePort) {
     string += " / connected to " + laststatus.comms.interfaces.activePort
+    htmlString += " / connected to " + recoveryEscapeHtml(laststatus.comms.interfaces.activePort)
   }
 
-  $('#windowtitle').html(string)
+  $('#windowtitle').html(htmlString)
   document.title = "Urban Creator CONTROL" + string
 
 }
@@ -246,6 +257,10 @@ function runJobFile() {
     });
 
     var fileOfBlob = new File([blob], 'upload.gcode');
+    // P9: the blob is always called upload.gcode, so send the real name
+    // separately - the server records it for "Recover Job". Appended before
+    // the file so it is available however multer orders its parsing.
+    formData.append("fileName", loadedFileName || "");
     formData.append("file", fileOfBlob);
     var xhr = new XMLHttpRequest();
     xhr.onload = function() {
@@ -271,6 +286,7 @@ function runJobFile() {
     });
 
     var fileOfBlob = new File([blob], 'upload.gcode');
+    formData.append("fileName", loadedFileName || "");
     formData.append("file", fileOfBlob);
     var xhr = new XMLHttpRequest();
     xhr.onload = function() {

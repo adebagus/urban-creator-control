@@ -186,6 +186,94 @@ board Anda semua STM32, bukan ESP32.
 
 ---
 
+## P9 — Job Recovery (disimpan di server, bukan localStorage)
+
+Data recovery ada di `%APPDATA%\UrbanCreatorCONTROL-dev\job-recovery.json`
+(file kecil, boleh dibuka dengan Notepad untuk mengintip `state` dan
+`resumeLine`). **Pakai G-code yang punya baris kosong + komentar `;` + beberapa
+`M3/G21/G90/T`** — justru di file seperti itu nomor baris versi lama melenceng.
+Cara cek "baris yang benar": buka G-code di tab GCODE Editor, catat baris yang
+sedang disorot saat Anda cabut USB, bandingkan dengan `resumeLine`.
+
+- [ ] **Cabut USB di tengah job → restart app**: jalankan job, cabut USB paksa
+      di tengah jalan, tutup app, buka lagi. **Harapan**: dialog "Unfinished job
+      found" muncul (setelah splash hilang), menampilkan nama file yang benar
+      dan `resumeLine` yang berdekatan dengan posisi sebenarnya. `state` di file
+      = `running`/`interrupted` (bukan `stopped`).
+- [ ] **Nomor baris = baris SUMBER, bukan indeks antrean**: pada file uji
+      di atas, `resumeLine` harus cocok dengan nomor baris di editor, TIDAK
+      melenceng beberapa baris ke depan (perilaku lama).
+- [ ] **Cek arah kesalahan**: `resumeLine` harus sama dengan atau SEDIKIT SEBELUM
+      posisi mesin berhenti — tidak boleh lebih jauh dari itu. (Kalau lebih jauh,
+      hasil recovery akan MELEWATI bagian yang belum dipotong — ini kegagalan.)
+- [ ] **Recover job**: klik "Recover job" → wizard 2 langkah terbuka dengan
+      "Start from line" sudah terisi `resumeLine`, catatan file/waktu tampil,
+      dan (kalau firmware melaporkan) peringatan kedalaman planner.
+- [ ] **Job selesai normal → data terhapus**: jalankan job pendek sampai selesai
+      (M30). **Harapan**: `job-recovery.json` hilang begitu mesin kembali Idle
+      (bukan saat baris terakhir terkirim — lihat file berstatus `completing`
+      selama gerakan terakhir masih berjalan, lalu hilang). Restart app →
+      TIDAK ada dialog recovery.
+- [ ] **Cabut USB tepat di gerakan terakhir** (setelah baris terakhir terkirim,
+      sebelum mesin berhenti): file harus TETAP ada dengan baris di dekat akhir
+      file — bukan baris 1.
+- [ ] **Tombol Stop**: jalankan job, tekan Stop. **Harapan**: file TETAP ada
+      dengan `state: stopped` (disengaja — ini kasus "mata bor patah → Stop →
+      ganti → lanjutkan"). Restart app → dialog muncul, teks "The job was stopped".
+- [ ] **Discard**: pilih "Discard" di dialog → file terhapus, restart app tidak
+      menawarkan lagi. "Later" → file tetap ada.
+- [ ] **File salah**: buka G-code LAIN, klik Recover Job. **Harapan**: peringatan
+      merah "The loaded file is X, not Y". Kalau file lebih pendek dari
+      `resumeLine`: peringatan + mulai dari baris 1.
+- [ ] **Jog & probing tidak menimpa data**: setelah ada data recovery, jalankan
+      jog/probing/bbox (`isJob:false`) — isi file TIDAK berubah.
+- [ ] **Halaman Jog-from-Phone**: buka dari HP saat ada data recovery —
+      TIDAK ada dialog di HP.
+- [ ] **Job berjalan + reload renderer (F5)**: tekan F5 di tengah job.
+      **Harapan**: TIDAK muncul dialog recovery untuk job yang sedang jalan.
+- [ ] **Nama file berisi karakter aneh** (`a'b&c.nc`, kutip, `&`): dialog
+      menampilkannya apa adanya, tanpa merusak tampilan.
+
+### P9 — State basi setelah antrean dibuang (cabut USB / Stop / Clear Alarm)
+
+Bug asal: setelah USB dicabut di tengah job lalu Connect lagi, perintah PERTAMA
+yang dikirim klien (`$$`) tidak pernah sampai ke controller, dan log palsu
+`[ JOB COMPLETE ] Job completed in 00h00m` muncul + entri kotor masuk riwayat job.
+
+- [ ] **Cabut USB di tengah job → Connect lagi**: **Harapan**: TIDAK ada baris
+      `[ JOB COMPLETE ]` di log. Dump `$$` (pengaturan) tampil lengkap tepat
+      setelah connect — baris pertama tidak hilang.
+- [ ] **Riwayat job mencatat job yang terputus — tepat SATU kali, akurat**:
+      setelah skenario di atas, buka statistik job (Job Stats / "Log: Jobs").
+      **Harapan**: ada SATU entri baru bertanda ✗ merah (tidak selesai) untuk
+      job yang dicabut, dengan jam mulai = saat job dijalankan dan durasi
+      "(Streamed)" ≈ lama job berjalan SEBELUM USB dicabut (bukan sampai Anda
+      menekan Connect). Setelah Connect + perintah lain: TIDAK bertambah entri
+      lagi (tidak ada entri kedua/palsu).
+- [ ] **Stop di tengah job → riwayat**: satu entri ✗ dengan waktu berhenti =
+      saat Stop ditekan. Tidak ada log `[ JOB COMPLETE ]`.
+- [ ] **Alarm → Clear Alarm/Reset (metode yang mengosongkan antrean) → riwayat**:
+      satu entri ✗. Clear Alarm biasa (`$X` saja) TIDAK menambah entri.
+- [ ] **Tidak ada entri untuk yang bukan job**: kirim perintah di console
+      (`$$`, `$G`), jog, probing — lalu putuskan koneksi. Riwayat tidak berubah.
+- [ ] **Job yang sudah selesai dikirim lalu di-Stop**: jalankan job pendek dan
+      tekan Stop SETELAH baris terakhir terkirim (saat mesin masih menyelesaikan
+      gerakan). Entri tetap ✓ (sudah tercatat selesai saat baris terakhir
+      terkirim); tidak muncul entri ✗ tambahan.
+- [ ] **Job BARU tepat setelah reconnect mulai dari baris 1**: Connect lagi lalu
+      SEGERA (sebelum 1-2 detik) jalankan job. **Harapan**: gerakan/baris pertama
+      = baris pertama file (header G21/G90/spindle tetap dijalankan), bukan
+      melompat ke tengah file. Perhatikan kursor editor saat job mulai.
+- [ ] **Stop di tengah job → kirim perintah apa saja** (mis. `$G` di console):
+      TIDAK ada `[ JOB COMPLETE ]` palsu.
+- [ ] **Alarm di tengah job → Clear Alarm/Reset (metode yang mengosongkan
+      antrean) → kirim perintah**: TIDAK ada `[ JOB COMPLETE ]` palsu.
+- [ ] **Job selesai normal TETAP dicatat**: jalankan job pendek sampai selesai.
+      **Harapan**: `[ JOB COMPLETE ] Job completed in ...` muncul SEKALI dan
+      entri "complete" masuk riwayat job (fix tidak boleh mematikan ini).
+
+---
+
 ## Ringkasan: Area Paling Berisiko (prioritaskan waktu review di sini)
 
 1. **🔴 Laser profile homing behavior ($44/$45)** — ini SATU-SATUNYA test di

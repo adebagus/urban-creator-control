@@ -328,7 +328,7 @@ function bindKeys() {
           socket.emit('runJob', {
             data: editor.getValue(),
             isJob: true,
-            fileName: ""
+            fileName: loadedFileName
           });
         } else if (laststatus.comms.connectionStatus == 3) {
           socket.emit('pause', true);

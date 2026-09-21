@@ -117,6 +117,12 @@ function printLog(string) {
 };
 
 function initSocket() {
+  // P9: drop the legacy client-side recovery value. Nothing reads it any more,
+  // and a leftover would only be stale data - the server owns this now.
+  try {
+    localStorage.removeItem('gcodeLineNumber');
+  } catch (e) {}
+
   socket = io.connect(server, {
     'timeout': 60000,
     'connect timeout': 60000
@@ -304,8 +310,15 @@ function initSocket() {
 
   socket.on("jobComplete", function(data) {
 
+    // The server emits jobComplete from send1Q's "queue is empty" branch, which
+    // also runs for a stopped/interrupted job or a lone console command
+    // (failed:true). Only a job that genuinely ran to the end (completed and
+    // not failed) may print "JOB COMPLETE" or be written to the job history -
+    // one flag, used by every branch below, so they cannot drift apart.
+    var isRealCompletion = !!(data.completed && !data.failed);
+
     // Jobstats.js
-    if (data.completed && data.jobStartTime && data.jobEndTime) {
+    if (isRealCompletion && data.jobStartTime && data.jobEndTime) {
       console.log("jobComplete", data)
       var runTime = data.jobEndTime - data.jobStartTime; // in Milliseconds
       $('#timeRemaining').html("DONE: " + msToTime(runTime));
@@ -346,13 +359,15 @@ function initSocket() {
         $('#timeRemaining').html("DONE: " + msToTime(runTime));
       }
       Metro.dialog.open("#completeMsgModal");
-      var icon = ''
-      var source = "JOB COMPLETE"
-      var string = "Job completed in " + msToTime(runTime) + " / " + data.jobCompletedMsg
-      var printLogCls = "fg-darkGreen"
-      printLogModern(icon, source, string, printLogCls)
+      if (isRealCompletion) {
+        var icon = ''
+        var source = "JOB COMPLETE"
+        var string = "Job completed in " + msToTime(runTime) + " / " + data.jobCompletedMsg
+        var printLogCls = "fg-darkGreen"
+        printLogModern(icon, source, string, printLogCls)
+      }
       $('#timeRemaining').html("DONE: " + msToTime(runTime));
-    } else if (data.jobStartTime && data.jobEndTime) {
+    } else if (isRealCompletion && data.jobStartTime && data.jobEndTime) {
       // Without jobCompletedMsg Message (Normal Job)
       var runTime = data.jobEndTime - data.jobStartTime;
       var icon = ''
@@ -378,6 +393,37 @@ function initSocket() {
     // }
 
 
+  });
+
+  // A job that had started streaming and was then stopped, interrupted or
+  // wiped (Stop button, USB pulled, alarm reset). The server sends this
+  // explicitly - and only for a real, in-progress job - so it is recorded in
+  // the job history as an INCOMPLETE run with its real start and stop times.
+  //
+  // It is deliberately a different event from "jobComplete". A jobComplete with
+  // failed:true and a start time is exactly the shape of the stale-reconnect
+  // bug, so that handler above never writes history for anything failed; this
+  // one is the only path that records an incomplete job, and the server cannot
+  // produce it except at the moment a job actually dies.
+  socket.on("jobStopped", function(data) {
+    // Must describe a real, timed run - anything else is noise, not history.
+    if (!data || !(data.jobStartTime > 0) || !(data.jobEndTime >= data.jobStartTime)) return;
+    // Only the desktop page loads the job-history code (jobstats.js).
+    if (typeof storeJob !== 'function') return;
+
+    var estimateTime = 0; // in Minutes
+    if (typeof object !== 'undefined' && object && object.userData != undefined) {
+      estimateTime = object.userData.totalTime;
+    }
+    console.log("jobStopped", data)
+    storeJob({
+      "completed": false, // always: a stopped job never completed, whatever the payload says
+      "filename": loadedFileName,
+      "estruntime": estimateTime,
+      "streamruntime": data.jobEndTime - data.jobStartTime,
+      "startdate": data.jobStartTime,
+      "enddate": data.jobEndTime
+    });
   });
 
   socket.on("machinename", function(data) {
@@ -409,9 +455,10 @@ function initSocket() {
       progressbar.val(donepercent);
     }
 
-    if (total > done) {
-      localStorage.setItem('gcodeLineNumber', done); //recovery line number
-    }
+    // P9: the recovery line number used to be written to localStorage right
+    // here. It is now persisted by the server (jobRecovery.js): this value was
+    // a queue index that drifted from the real source line, and it lived in
+    // the browser profile.
 
     if (laststatus) {
       if (laststatus.comms.connectionStatus == 3) {
@@ -433,6 +480,17 @@ function initSocket() {
     }
     $('#gcodesent').html("Job Queue: " + data[0]);
   })
+
+  // P9: the server found an unfinished job from an earlier run (or an earlier
+  // connection this session) and is offering to recover it. The LAN
+  // Jog-from-Phone page shares this file but has no recovery UI - and must
+  // not pop a dialog on a phone - so it ignores this.
+  socket.on('recoveryOffer', function(info) {
+    if (isJogWidget) return;
+    if (typeof showRecoveryOffer === 'function') {
+      showRecoveryOffer(info);
+    }
+  });
 
   socket.on('toastErrorAlarm', function(data) {
     console.log(data)

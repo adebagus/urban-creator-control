@@ -158,7 +158,11 @@ function runGcodeSection(startline, endline) {
   socket.emit('runJob', {
     data: newGcodeString,
     isJob: true,
-    fileName: ""
+    fileName: loadedFileName,
+    // P9: this sends a SLICE of the editor. Line 1 of the slice is editor line
+    // startline+1 - tell the server so the line it records for "Recover Job"
+    // is an editor line, not a slice-relative one.
+    lineOffset: startline || 0
   });
 }
 

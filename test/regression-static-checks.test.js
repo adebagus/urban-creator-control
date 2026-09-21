@@ -258,3 +258,113 @@ test('$347 fix does not fight for the same key as any other setting', () => {
   const matches = src.match(/^\s*347:\s*\{/gm) || [];
   assert.equal(matches.length, 1, 'expected exactly one $347 entry, found ' + matches.length);
 });
+
+// ---------------------------------------------------------------------------
+// P9: server-side job recovery wiring. index.js can't be require()d from a
+// test (it boots Electron and the servers on load), so these confirm the hooks
+// that jobRecovery.js depends on are still in place. The module's own logic is
+// covered behaviourally in test/job-recovery.test.js - these guard the glue.
+// ---------------------------------------------------------------------------
+
+// The working tree is CRLF (git autocrlf) - normalise to LF so multi-line
+// patterns and the function-end detection below behave the same on every
+// checkout, CRLF or LF.
+const readLF = (relPath) => read(relPath).replace(/\r\n/g, '\n');
+
+// Body of a top-level `function name(...) {` up to the next top-level closing
+// brace - good enough for index.js's flat, unindented function declarations.
+function fnBody(src, name) {
+  const start = src.indexOf('function ' + name + '(');
+  assert.notEqual(start, -1, 'function ' + name + ' must exist');
+  const end = src.indexOf('\n}\n', start);
+  assert.notEqual(end, -1, 'could not find the end of ' + name);
+  return src.slice(start, end);
+}
+
+test('P9 recovery: runJob records the source line BEFORE each addQToEnd, and only for real jobs', () => {
+  const body = fnBody(readLF('index.js'), 'runJob');
+  assert.match(body, /trackRecovery\s*=\s*\(object\.isJob\s*===\s*true\)/, 'only isJob:true jobs are tracked (not probing / bbox / console)');
+  const markIdx = body.indexOf('recoveryMarks.push');
+  const addIdx = body.indexOf('addQToEnd(tosend)');
+  assert.ok(markIdx !== -1 && addIdx !== -1, 'both calls must exist');
+  assert.ok(markIdx < addIdx, 'the mark must capture gcodeQueue.length BEFORE addQToEnd pushes (and injects $G)');
+  assert.match(body, /line:\s*i\s*\+\s*1/, 'marks are 1-based SOURCE line numbers, not queue indices');
+  assert.match(body, /jobRecovery\.begin\(/);
+  assert.match(body, /lineOffset:\s*object\.lineOffset/, 'slice jobs must be able to report editor line numbers');
+});
+
+test('P9 recovery: send1Q marks the job fully-sent BEFORE it dumps the queue', () => {
+  const body = fnBody(readLF('index.js'), 'send1Q');
+  const markIdx = body.indexOf('jobRecovery.markFullySent()');
+  const dumpIdx = body.indexOf('gcodeQueue.length = 0');
+  assert.ok(markIdx !== -1, 'send1Q must call jobRecovery.markFullySent()');
+  assert.ok(markIdx < dumpIdx, 'it reads the live queue, so it must run before the queue is dumped');
+});
+
+test('P9 recovery: the record is cleared on controller Idle with nothing left unacknowledged - not on "last line sent"', () => {
+  const src = readLF('index.js');
+  assert.match(fnBody(src, 'parseFeedback'), /state\s*==\s*"Idle"\)\s*\{\s*(\/\/[^\n]*\n\s*)*jobRecovery\.onIdle\(sentBuffer\.length\s*===\s*0\)/);
+  assert.ok(!/jobRecovery\.clear\(/.test(fnBody(src, 'send1Q')), 'send1Q means "sent", not "finished" - it must not clear the record');
+});
+
+test('P9 recovery: every way a job dies snapshots first (stop, connection loss, quit) - and a jog-cancel is not a stop', () => {
+  const src = readLF('index.js');
+  assert.match(fnBody(src, 'stop'), /if\s*\(!\(data\s*&&\s*data\.jog\)\)\s*\{\s*(\/\/[^\n]*\n\s*)*jobRecovery\.finish\('stopped'\)/);
+  assert.match(fnBody(src, 'stopPort'), /^function stopPort\(\) \{\s*(\/\/[^\n]*\n\s*)*jobRecovery\.finish\('interrupted'\);/, 'must be the FIRST thing stopPort does - it wipes the queue right after');
+  const quit = fnBody(src, 'quitAndCleanup');
+  assert.ok(quit.indexOf('jobRecovery.finish(') > quit.indexOf('isQuitting = true'), 'after the user confirmed the quit');
+  assert.ok(quit.indexOf('jobRecovery.finish(') < quit.indexOf('stopMachineBeforeQuit('), 'before the stop sequence / port close');
+});
+
+test('P9 recovery: the offer/ack/discard socket API exists and never touches a LIVE job\'s record', () => {
+  const src = readLF('index.js');
+  assert.match(src, /if \(!jobRecovery\.isTracking\(\)\) \{\s*var pendingRecovery = jobRecovery\.peek\(\);/);
+  assert.match(src, /socket\.emit\("recoveryOffer", pendingRecovery\)/);
+  assert.match(src, /socket\.on\("getRecoveryInfo", function\(ack\)/);
+  assert.match(src, /socket\.on\("discardRecovery", function\(\) \{\s*if \(!jobRecovery\.isTracking\(\)\)/);
+});
+
+test('P9 recovery: the /runjob route takes the file name from a form field, as untrusted text', () => {
+  const src = readLF('index.js');
+  assert.match(src, /typeof req\.body\.fileName === 'string'/);
+  assert.match(src, /fileName:\s*recoveryFileName/);
+});
+
+test('P9 recovery: the client sends the real file name with every job it starts', () => {
+  const main = readLF('app/js/main.js');
+  const appended = main.match(/formData\.append\("fileName", loadedFileName \|\| ""\)/g) || [];
+  assert.equal(appended.length, 2, 'both runJobFile() branches (memory + editor) must send it');
+  assert.match(readLF('app/js/keyboard.js'), /isJob: true,\s*fileName: loadedFileName/);
+  assert.match(readLF('app/js/toolchange.js'), /lineOffset:\s*startline \|\| 0/, 'slice jobs report editor line numbers');
+});
+
+test('P9 recovery: localStorage is no longer a second source of truth', () => {
+  for (const f of ['app/js/websocket.js', 'app/wizards/resume/resume.js', 'app/js/main.js']) {
+    const src = readLF(f);
+    assert.ok(!/localStorage\.setItem\(\s*['"]gcodeLineNumber/.test(src), f + ' must not write the legacy key');
+    assert.ok(!/localStorage\.getItem\(\s*['"]gcodeLineNumber/.test(src), f + ' must not read the legacy key');
+  }
+  assert.match(readLF('app/js/websocket.js'), /localStorage\.removeItem\('gcodeLineNumber'\)/, 'the stale legacy value is dropped');
+});
+
+test('P9 recovery: the renderer never puts server-supplied text into HTML unescaped (nodeIntegration is on)', () => {
+  const src = readLF('app/wizards/resume/resume.js');
+  assert.match(src, /function recoveryEscapeHtml\(/);
+  // Any place a name reaches an HTML string must go through the escaper.
+  const raw = src.match(/['"]\s*\+\s*(info\.fileName|loadedFileName)\s*\+\s*['"]/g) || [];
+  assert.deepEqual(raw, [], 'raw file-name concatenation found: ' + raw.join(' | '));
+  for (const needle of ['recoveryEscapeHtml(info.fileName)', 'recoveryEscapeHtml(loadedFileName)']) {
+    assert.ok(src.includes(needle), needle + ' expected');
+  }
+  // Numbers are coerced, not interpolated as-is.
+  assert.match(src, /value="` \+ parseInt\(lineNumber, 10\) \+ `"/);
+  // The phone page must not get a recovery dialog.
+  assert.match(readLF('app/js/websocket.js'), /socket\.on\('recoveryOffer', function\(info\) \{\s*if \(isJogWidget\) return;/);
+});
+
+test('P9 recovery: the recovery module ships in the package', () => {
+  assert.ok(exists('jobRecovery.js'));
+  assert.match(readLF('index.js'), /require\('\.\/jobRecovery'\)/);
+  const pkg = JSON.parse(readLF('package.json'));
+  assert.ok(pkg.build.files.includes('**/*'), 'jobRecovery.js relies on the "**/*" files glob to be bundled');
+});
