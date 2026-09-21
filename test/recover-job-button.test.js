@@ -35,10 +35,10 @@ function assertJobStartsAt(job, start, safeZ = 15) {
 }
 
 // ===================================================================================
-// End to end: "Recover Job" -> dialog (pre-filled) -> "Mulai dari Baris Ini" -> Run
+// End to end: "Start from Line" -> dialog (pre-filled) -> "Mulai dari Baris Ini" -> Run
 // ===================================================================================
 
-test('END TO END (file already loaded): Recover Job -> dialog pre-filled with X-10 -> ONE click -> the job runs from that line, NOT line 1', () => {
+test('END TO END (file already loaded): Start from Line -> dialog pre-filled with X-10 -> ONE click -> the job runs from that line, NOT line 1', () => {
   const env = makeEnv();
   env.ctx.recoverJob(info());
   assert.equal(env.dialogs.length, 1);
@@ -56,7 +56,7 @@ test('END TO END (no program loaded): the button says "open a G-code file first"
   env.ctx.recoverCrashedJob();
   assert.equal(env.dialogs.length, 1);
   assert.match(env.dlg().title, /Buka file G-code dulu/);
-  assert.match(env.dlg().content, /Ada data job tersimpan untuk file: <b>part\.nc<\/b>/, 'and it names the saved job\'s file');
+  assert.match(env.dlg().content, /Ada data pekerjaan tersimpan untuk file: <b>part\.nc<\/b>/, 'and it names the saved job\'s file');
   assert.equal(env.picker, 0, 'the file picker is NOT opened');
   assert.equal(env.posted.length, 0);
   env.pickFile('part.nc'); // the user opens the file themselves
@@ -133,7 +133,7 @@ test('the notifications only inform: neither the banner nor the app-start modal 
   assert.deepEqual(modal.emits, [], 'and asks the server for nothing - the saved job is kept');
 });
 
-test('the ribbon Recover Job button is the deliberate way in - it still works after a notification was closed', () => {
+test('the ribbon Start from Line button is the deliberate way in - it still works after a notification was closed', () => {
   const env = makeEnv({ ack: info() });
   env.ctx.showRecoveryBanner(info());
   env.handlers['#recoveryBannerClose'].click();
@@ -182,7 +182,7 @@ test('ribbon: a saved job that belongs to ANOTHER file (or a differently spelled
     assert.match(env.dlg().content, /Anda bebas mulai dari baris mana pun/, 'the user chooses the line');
     assert.ok(!/terhenti/.test(env.dlg().content), 'the other file\'s crash is not presented as this file\'s');
     assert.equal(env.prefill().start, 1, 'not the other file\'s saved line');
-    assert.ok(!/Ada data job tersimpan|Tidak dipakai/.test(env.dlg().content), 'and it does not explain why the record is unused');
+    assert.ok(!/Ada data pekerjaan tersimpan|Tidak dipakai/.test(env.dlg().content), 'and it does not explain why the record is unused');
     assert.ok(!env.dlg().content.includes(saved.replace(/&/g, '&amp;')), 'the other file name is not shown at all');
   }
 });
@@ -264,7 +264,7 @@ test('ribbon, NO saved job, file loaded: the SAME "Lanjutkan dari Baris" dialog 
     assert.deepEqual(env.emits, ['getRecoveryInfo']);
     assert.equal(env.dialogs.length, 1);
     assert.match(env.dlg().title, /Lanjutkan dari Baris/);
-    assert.match(env.dlg().title, /Start From Line/);
+    assert.match(env.dlg().title, /Start from Line/);
     assert.equal(env.startButton().caption, 'Mulai dari Baris Ini / Start from Line');
     assert.ok(!/Tidak ada job tersimpan/.test(env.dlg().title + env.dlg().content));
   }
@@ -335,7 +335,7 @@ test('ribbon, NO saved job and NO program loaded: ONLY then the message "Buka fi
     assert.match(env.dlg().title, /Buka file G-code dulu/);
     assert.match(env.dlg().title, /Open a G-code file first/);
     assert.match(env.dlg().content, /Buka file G-code dulu, lalu klik Start from Line lagi/);
-    assert.ok(!/Ada data job tersimpan/.test(env.dlg().content), 'nothing saved to mention');
+    assert.ok(!/Ada data pekerjaan tersimpan/.test(env.dlg().content), 'nothing saved to mention');
     assert.equal(env.dlg().actions.length, 1);
     assert.equal(env.dlg().actions[0].caption, 'Tutup / Close');
     assert.ok(!/Lanjutkan dari Baris/.test(env.dlg().title), 'no start dialog without a program');
@@ -349,7 +349,7 @@ test('ribbon, saved job PRESENT and NO program loaded: the message names the sav
   assert.equal(env.picker, 0);
   assert.equal(env.dialogs.length, 1);
   assert.match(env.dlg().title, /Buka file G-code dulu/);
-  assert.ok(env.dlg().content.includes('Ada data job tersimpan untuk file: <b>part.nc</b>.'));
+  assert.ok(env.dlg().content.includes('Ada data pekerjaan tersimpan untuk file: <b>part.nc</b>.'));
   const escaped = makeEnv({ ack: info({ fileName: '<img src=x onerror=alert(1)>.nc' }), text: '', loadedName: '' });
   escaped.ctx.recoverCrashedJob();
   assert.ok(!/<img/i.test(escaped.dlg().content));

@@ -1,5 +1,5 @@
-// Tests for the "Lanjutkan dari Baris" / "Start From Line" dialog (app/wizards/resume/resume.js),
-// opened by "Recover Job" (banner / modal / ribbon - with a saved crash record, or by the user with none)
+// Tests for the "Lanjutkan dari Baris" / "Start from Line" dialog (app/wizards/resume/resume.js),
+// opened by the ribbon "Start from Line" button (with a saved crash record, or by the user with none)
 // and by the GCODE Editor's right-click "Recover job from Line".
 //
 // What it does - and, on purpose, does NOT do:
@@ -61,7 +61,7 @@ test('dialog: title, description, job info, suggestion and note - the requested 
   const env = open(120);
   const d = env.dlg();
   assert.match(d.title, /Lanjutkan dari Baris/);
-  assert.match(d.title, /class='recovery-title-en'>Start From Line</);
+  assert.match(d.title, /class='recovery-title-en'>Start from Line</);
   assert.ok(d.content.includes('Melanjutkan pekerjaan setelah listrik mati, koneksi putus, atau gangguan lain.'));
   assert.ok(d.content.includes('Pekerjaan Anda (total <b>200</b> baris) terhenti sekitar baris <b>120</b>.'));
   assert.ok(d.content.includes('Disarankan mulai sekitar baris <b>110</b> untuk hasil lebih aman.'));
@@ -1036,5 +1036,5 @@ test('compact: the dialog body scrolls on a short screen so the action button st
 
 test('compact: no "other file" block in any source, and the function no longer takes it', () => {
   assert.ok(!/otherFile/.test(RESUME));
-  assert.ok(!/Ada data job tersimpan untuk file lain/.test(RESUME));
+  assert.ok(!/Ada data pekerjaan tersimpan untuk file lain/.test(RESUME));
 });

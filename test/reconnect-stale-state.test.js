@@ -439,7 +439,7 @@ test('structural: every place that dumps the queue announces first, or is the ge
     assert.ok(announces || isGenuineCompletion,
       where + ' dumps the queue without announcing a stopped job - a job killed here would vanish from the job history');
     if (!isGenuineCompletion) {
-      // a job killed here must keep its "Recover Job" record: freeze it BEFORE the dump, or the next
+      // a job killed here must keep its recovery record: freeze it BEFORE the dump, or the next
       // "ok" on the emptied queue reads as "every line sent" and the record is wiped as "completed"
       assert.ok(/jobRecovery\.finish\(/.test(scope),
         where + ' dumps the queue without freezing the recovery record (jobRecovery.finish) - Clear Alarm used to erase the record this way');
@@ -447,7 +447,7 @@ test('structural: every place that dumps the queue announces first, or is the ge
   }
 });
 
-// --- Clear Alarm must not erase the "Recover Job" record --------------------------------------------
+// --- Clear Alarm must not erase the recovery record --------------------------------------------
 // Seen on a real test: a job was rejected by the controller, the operator clicked Clear Alarm, and
 // six seconds later the log said "Job recovery data cleared (completed)". Clear Alarm (method 2) dumped the
 // queue without freezing the record; the next "ok" on the empty queue then looked like "every line sent",

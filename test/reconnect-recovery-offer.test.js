@@ -6,7 +6,7 @@
 // They are INFORMATION ONLY. They appear on their own, at a moment the user did not choose -
 // possibly before the machine is homed and zeroed - so nothing in them can start anything: no
 // button opens the recovery dialog. The text says where the job stopped and suggests a line
-// "after Home and Set Zero"; the way on is the ribbon "Recover Job" button (or the editor's
+// "after Home and Set Zero"; the way on is the ribbon "Start from Line" button (or the editor's
 // right-click), pressed deliberately. Closing a notification NEVER deletes the saved data.
 // (What the ribbon button does is tested in recover-job-button.test.js / start-from-line.test.js.)
 //
@@ -122,7 +122,7 @@ test('banner: appears for an interrupted record, is NOT a modal, and shows the i
   assert.equal(env.dialogs, 0, 'must not open a modal dialog');
   const html = env.banners[0];
   assert.match(html, /position: fixed; left: 12px; bottom: 12px/);
-  assert.match(html, /Job belum selesai ditemukan/);
+  assert.match(html, /Pekerjaan belum selesai ditemukan/);
   assert.match(html, /Unfinished job found/);
   assert.ok(html.includes(env.ctx.recoveryOfferInfoHtml(rec())));
   assert.ok(html.includes('Untuk melanjutkan: tombol Start from Line di ribbon. Menutup ini tidak menghapus data.'));
@@ -213,7 +213,7 @@ function openModal(info) {
 test('modal: bilingual title, the info text, the hint, ONE action "Tutup / Close" and a close (x)', () => {
   const env = openModal(rec());
   const o = env.dialogOpts;
-  assert.match(o.title, /Job belum selesai ditemukan/);
+  assert.match(o.title, /Pekerjaan belum selesai ditemukan/);
   assert.match(o.title, /class='recovery-title-en'>Unfinished job found</);
   assert.ok(o.content.includes(env.ctx.recoveryOfferInfoHtml(rec())));
   assert.ok(o.content.includes('Menutup ini tidak menghapus data.'));

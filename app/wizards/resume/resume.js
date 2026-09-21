@@ -27,7 +27,7 @@ function recoveryEscapeHtml(value) {
 }
 
 // ---- "Start from Line" (ribbon button; formerly "Recover Job") ----------------
-// The ribbon button ALWAYS opens the "Lanjutkan dari Baris" / "Start From Line" dialog -
+// The ribbon button ALWAYS opens the "Lanjutkan dari Baris" / "Start from Line" dialog -
 // the same one the GCODE Editor's right-click opens - as long as a G-code program is
 // loaded in the editor. It never opens the file picker. What differs is only the
 // pre-fill of the start line:
@@ -107,7 +107,7 @@ function showRecoveryNoFile(savedName) {
     title: "<i class='fas fa-fw fa-route'></i> Buka file G-code dulu" +
       "<div class='recovery-title-en'>Open a G-code file first</div>",
     content: '<p>Belum ada file G-code di editor. Buka file G-code dulu, lalu klik Start from Line lagi.</p>' +
-      (savedName ? '<p class="text-small">Ada data job tersimpan untuk file: <b>' + recoveryEscapeHtml(savedName) + '</b>.</p>' : ''),
+      (savedName ? '<p class="text-small">Ada data pekerjaan tersimpan untuk file: <b>' + recoveryEscapeHtml(savedName) + '</b>.</p>' : ''),
     clsDialog: 'dark',
     actions: [{
       caption: "Tutup / Close",
@@ -195,7 +195,7 @@ function showRecoveryOffer(info) {
 
     // Information only: no button starts anything, and closing keeps the saved data.
     Metro.dialog.create({
-      title: "<i class='fas fa-fw fa-route'></i> Job belum selesai ditemukan" +
+      title: "<i class='fas fa-fw fa-route'></i> Pekerjaan belum selesai ditemukan" +
         "<div class='recovery-title-en'>Unfinished job found</div>",
       content: '<div class="remark warning">' + recoveryOfferInfoHtml(info) + '</div>' +
         '<p class="text-small">' + RECOVERY_NOTICE_HINT + '</p>',
@@ -272,7 +272,7 @@ function showRecoveryBanner(info) {
     'style="position: fixed; left: 12px; bottom: 12px; z-index: 1500; max-width: 460px;">' +
     '<button type="button" id="recoveryBannerClose" class="recovery-banner-close" ' +
     'title="Tutup / Close" aria-label="Tutup / Close">&times;</button>' +
-    '<div><b><i class="fas fa-fw fa-route"></i> Job belum selesai ditemukan</b></div>' +
+    '<div><b><i class="fas fa-fw fa-route"></i> Pekerjaan belum selesai ditemukan</b></div>' +
     '<div class="recovery-banner-en">Unfinished job found</div>' +
     '<div class="text-small mt-2">' + recoveryOfferInfoHtml(info) + '</div>' +
     '<div class="recovery-banner-en mt-2">' + RECOVERY_NOTICE_HINT + '</div>' +
@@ -282,7 +282,7 @@ function showRecoveryBanner(info) {
 }
 
 // ===========================================================================
-// "Lanjutkan dari Baris" / "Start From Line"
+// "Lanjutkan dari Baris" / "Start from Line"
 // ===========================================================================
 // The final button of this dialog STARTS THE MACHINE, as one job: Z up, spindle,
 // rapid to where the start line begins, plunge, then the file from the start line
@@ -290,24 +290,23 @@ function showRecoveryBanner(info) {
 // the button is disabled until it all passes and it is re-checked at the click -
 // the dialog shows exactly what will run, and the 3D View is brought up so the
 // motion can be watched and stopped.
-// Opened by "Recover Job" (banner / modal / ribbon) and by the editor's
+// Opened by the ribbon "Start from Line" button and by the editor's
 // right-click "Recover job from Line". It deliberately does NOT rebuild the
 // G-code in the editor - the program is never rewritten. It
 //   1. suggests a start line a few lines before where the job stopped, editable;
 //   2. raises Z with one rapid, to (highest Z in the file + a "Safe Height"), and
-//   3. arms the NEXT Run to send the file from the chosen line. A slice of a
-//      program cannot start on its own - the controller rejects a first line
-//      that is an arc, or a cut without a feed rate (error:22 / error:33), and a
-//      spindle command that sits after the first move is missed - so the armed
-//      payload is: the file's own opening lines, then the state the file had
+//   3. on the one final click, sends the file from the chosen line as ONE job. A
+//      slice of a program cannot start on its own - the controller rejects a first
+//      line that is an arc, or a cut without a feed rate (error:22 / error:33), and
+//      a spindle command that sits after the first move is missed - so the payload
+//      is: the Z raise, the file's own opening lines, then the state the file had
 //      reached at the start line (spindle, feed, motion mode), a rapid to where
 //      the start line begins (at the safe Z) and down to the last Z, and then the
 //      lines from the start line on. Everything is read from what the file itself
 //      says before that line; nothing is guessed, and what will be sent is shown
 //      in the dialog first.
-// Run otherwise always sends the whole editor, so scrolling alone would still
-// start at line 1. The armed Run is single-use, is shown on the Run button, and is
-// cancelled by loading another file, touching the editor or opening the dialog again.
+// The Run button otherwise always sends the whole editor, so scrolling alone would
+// still start at line 1; this dialog is the only way to start from another line.
 var RECOVERY_DEFAULT_SAFE_Z = 10; // mm above the highest point of the file
 var RECOVERY_MAX_SAFE_Z = 500;
 var recoveryStartLocked = false;
@@ -488,8 +487,8 @@ function recoveryEntryPlan(lines, startLine, safeMm, facts) {
   return { lines: out, prefix: prefix, error: error, summary: summary };
 }
 
-// The text the armed Run sends, and the lineOffset that keeps the server's
-// "Recover Job" record in ORIGINAL file line numbers: a payload line p past the
+// The text the job sends, and the lineOffset that keeps the server's
+// recovery record in ORIGINAL file line numbers: a payload line p past the
 // inserted lines is file line p + lineOffset (clamped at 0; the few lines the
 // clamp could misplace are the inserted ones, which come before the start line).
 function recoveryRunPayload(sourceText, startLine, safeMm, facts, preMove) {
@@ -650,7 +649,7 @@ function showStartFromLine(stoppedLine, source) {
   recoveryShowLine(suggested);
   Metro.dialog.create({
     title: "<i class='fas fa-fw fa-route'></i> Lanjutkan dari Baris" +
-      "<div class='recovery-title-en'>Start From Line</div>",
+      "<div class='recovery-title-en'>Start from Line</div>",
     content: recoveryStartDialogHtml(stoppedLine, source, total, facts, suggested),
     clsContent: 'recovery-start-content',
     clsDialog: 'dark',

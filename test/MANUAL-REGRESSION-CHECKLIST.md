@@ -206,9 +206,9 @@ sedang disorot saat Anda cabut USB, bandingkan dengan `resumeLine`.
 - [ ] **Cek arah kesalahan**: `resumeLine` harus sama dengan atau SEDIKIT SEBELUM
       posisi mesin berhenti — tidak boleh lebih jauh dari itu. (Kalau lebih jauh,
       hasil recovery akan MELEWATI bagian yang belum dipotong — ini kegagalan.)
-- [ ] **Recover job**: klik "Recover job" → wizard 2 langkah terbuka dengan
-      "Start from line" sudah terisi `resumeLine`, catatan file/waktu tampil,
-      dan (kalau firmware melaporkan) peringatan kedalaman planner.
+- [ ] **Start from Line setelah crash**: klik ribbon "Start from Line" (file yang sama
+      sudah dimuat) → dialog "Lanjutkan dari Baris" terbuka dengan baris terisi
+      `resumeLine` - 10 dan Safe Height 10 mm.
 - [ ] **Job selesai normal → data terhapus**: jalankan job pendek sampai selesai
       (M30). **Harapan**: `job-recovery.json` hilang begitu mesin kembali Idle
       (bukan saat baris terakhir terkirim — lihat file berstatus `completing`
@@ -219,12 +219,21 @@ sedang disorot saat Anda cabut USB, bandingkan dengan `resumeLine`.
       file — bukan baris 1.
 - [ ] **Tombol Stop**: jalankan job, tekan Stop. **Harapan**: file TETAP ada
       dengan `state: stopped` (disengaja — ini kasus "mata bor patah → Stop →
-      ganti → lanjutkan"). Restart app → dialog muncul, teks "The job was stopped".
-- [ ] **Discard**: pilih "Discard" di dialog → file terhapus, restart app tidak
-      menawarkan lagi. "Later" → file tetap ada.
-- [ ] **File salah**: buka G-code LAIN, klik Start from Line. **Harapan**: peringatan
-      merah "The loaded file is X, not Y". Kalau file lebih pendek dari
-      `resumeLine`: peringatan + mulai dari baris 1.
+      ganti → lanjutkan"). Restart app → TIDAK ada notifikasi otomatis (state
+      `stopped` tidak ditawarkan otomatis); ribbon "Start from Line" tetap
+      mengisi baris dari catatan itu.
+- [ ] **Menutup notifikasi tidak menghapus data**: tutup banner/modal dengan (x) atau
+      "Tutup / Close" → file `job-recovery.json` TETAP ada; tombol ribbon masih
+      mengisi baris yang sama. (UI tidak pernah menghapus catatan; hanya job baru
+      atau job selesai yang menggantinya.)
+- [ ] **File berbeda**: buka G-code LAIN (nama berbeda dari catatan), klik Start from
+      Line. **Harapan**: dialog terbuka di baris 1 (bukan baris catatan), tanpa
+      peringatan/catatan soal file lain dan tanpa dialog pilih file.
+- [ ] **Highlight editor mengikuti baris file asli**: jalankan job penuh lalu job
+      dari "Start from Line" (mis. baris 1500 dari file 1654 baris). **Harapan**:
+      baris aktif di tab GCODE Editor bergerak di sekitar baris file yang sebenarnya
+      (mulai ~baris 1493-1500 lalu maju), BUKAN angka kecil ~130. Untuk jog/probing/
+      bounding box (bukan job) kursor editor boleh bergerak seperti sebelumnya.
 - [ ] **Jog & probing tidak menimpa data**: setelah ada data recovery, jalankan
       jog/probing/bbox (`isJob:false`) — isi file TIDAK berubah.
 - [ ] **Halaman Jog-from-Phone**: buka dari HP saat ada data recovery —
