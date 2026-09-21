@@ -829,6 +829,10 @@ app.post('/runjob', (req, res) => {
     // field. Untrusted text: jobRecovery sanitises it on write and read, and
     // the renderer escapes it on display.
     var recoveryFileName = (req.body && typeof req.body.fileName === 'string') ? req.body.fileName : '';
+    // "Start From Line": the client sends the opening lines of the file plus the
+    // lines from the chosen one on, and says how far its line numbers are from the
+    // original file's, so the recorded resume line stays in ORIGINAL file lines.
+    var recoveryLineOffset = (req.body && typeof req.body.lineOffset === 'string' && /^\d{1,9}$/.test(req.body.lineOffset)) ? parseInt(req.body.lineOffset, 10) : 0;
     fs.readFile(req.file.path, 'utf8', function(err, data) {
       if (err) {
         return console.log(err);
@@ -838,6 +842,7 @@ app.post('/runjob', (req, res) => {
         //completedMsg: "",
         data: data,
         fileName: recoveryFileName,
+        lineOffset: recoveryLineOffset,
       }
       runJob(object)
     });

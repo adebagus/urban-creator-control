@@ -353,11 +353,12 @@ test('P9 recovery: the renderer never puts server-supplied text into HTML unesca
   // Any place a name reaches an HTML string must go through the escaper.
   const raw = src.match(/['"]\s*\+\s*(info\.fileName|loadedFileName)\s*\+\s*['"]/g) || [];
   assert.deepEqual(raw, [], 'raw file-name concatenation found: ' + raw.join(' | '));
-  for (const needle of ['recoveryEscapeHtml(info.fileName)', 'recoveryEscapeHtml(loadedFileName)']) {
+  for (const needle of ['recoveryEscapeHtml(info.fileName)', 'recoveryEscapeHtml(otherFile)', 'recoveryEscapeHtml(savedName)']) {
     assert.ok(src.includes(needle), needle + ' expected');
   }
-  // Numbers are coerced, not interpolated as-is.
-  assert.match(src, /value="` \+ parseInt\(lineNumber, 10\) \+ `"/);
+  // Numbers are coerced, not interpolated as-is (the info panel's line numbers).
+  assert.match(src, /var resume = parseInt\(info\.resumeLine, 10\);/);
+  assert.match(src, /html \+= ' dari <b>' \+ parseInt\(info\.totalLines, 10\) \+ '<\/b> total baris';/);
   // The phone page must not get a recovery dialog.
   assert.match(readLF('app/js/websocket.js'), /socket\.on\('recoveryOffer', function\(info\) \{\s*if \(isJogWidget\) return;/);
 });

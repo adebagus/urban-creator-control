@@ -53,6 +53,12 @@ function showGrbl(bool, firmware) {
     $("#grblButtons").show()
     $("#firmwarename").html(firmware.platform)
 
+    // P9: a controller just (re)connected - offer to recover an interrupted job
+    // (non-blocking banner, once per record; see resume.js).
+    if (typeof offerRecoveryOnReconnect === 'function') {
+      offerRecoveryOnReconnect()
+    }
+
   } else { // Hide
     $("#grblButtons").hide()
     $("#firmwarename").html('')

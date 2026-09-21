@@ -222,7 +222,7 @@ sedang disorot saat Anda cabut USB, bandingkan dengan `resumeLine`.
       ganti → lanjutkan"). Restart app → dialog muncul, teks "The job was stopped".
 - [ ] **Discard**: pilih "Discard" di dialog → file terhapus, restart app tidak
       menawarkan lagi. "Later" → file tetap ada.
-- [ ] **File salah**: buka G-code LAIN, klik Recover Job. **Harapan**: peringatan
+- [ ] **File salah**: buka G-code LAIN, klik Start from Line. **Harapan**: peringatan
       merah "The loaded file is X, not Y". Kalau file lebih pendek dari
       `resumeLine`: peringatan + mulai dari baris 1.
 - [ ] **Jog & probing tidak menimpa data**: setelah ada data recovery, jalankan
@@ -271,6 +271,62 @@ yang dikirim klien (`$$`) tidak pernah sampai ke controller, dan log palsu
 - [ ] **Job selesai normal TETAP dicatat**: jalankan job pendek sampai selesai.
       **Harapan**: `[ JOB COMPLETE ] Job completed in ...` muncul SEKALI dan
       entri "complete" masuk riwayat job (fix tidak boleh mematikan ini).
+
+### P9 — Notifikasi recovery (hanya informasi) dan dialog "Lanjutkan dari Baris"
+
+> **Notifikasi otomatis (banner saat reconnect, modal saat app dibuka) HANYA INFORMASI.** Tidak ada
+> tombol yang membuka Start from Line. Menutupnya ((x) atau "Tutup / Close") TIDAK menghapus data recovery.
+> Jalan masuknya: tombol ribbon **Start from Line** (kapan saja, dengan atau tanpa data crash; syarat: ada
+> file G-code di editor) atau klik kanan baris → "Recover job from Line" di GCODE Editor. Keduanya membuka
+> dialog **Lanjutkan dari Baris / Start From Line** yang SAMA.
+>
+> Tombol akhir dialog ("Mulai dari Baris Ini") **LANGSUNG MENJALANKAN MESIN** sebagai SATU job (tidak ada
+> klik Run kedua): Z naik → spindle nyala → gerak cepat ke titik awal → turun → potong dari baris N.
+> **Tes TANPA mata bor dan tanpa benda kerja, siap menekan Stop.**
+
+- [ ] **Banner saat reconnect**: cabut USB di tengah job, sambung lagi (app tetap terbuka). Banner kiri-bawah
+      muncul SETELAH controller teridentifikasi: "Pekerjaan terhenti di baris X dari Y total baris. Disarankan
+      mulai sekitar baris X-10 setelah Home dan Set Zero ulang." + nama file + petunjuk ribbon. **Tidak ada
+      tombol aksi**, hanya (x). Bukan modal (Stop/jog tetap bisa). Tutup dengan (x) → data TETAP ada:
+      tombol ribbon Start from Line masih menemukannya.
+- [ ] **Modal saat app dibuka** (ada rekaman crash): teks sama, hanya "Tutup / Close" dan (x). Menutupnya
+      tidak menghapus data (buka app lagi → muncul lagi, sampai job baru dijalankan/selesai).
+- [ ] **Sekali per rekaman**: tutup banner, lalu Disconnect + Connect lagi (app tidak di-restart) → banner
+      TIDAK muncul lagi. Job baru yang terputus → muncul lagi. Rekaman `stopped` (Stop manual) → TIDAK ada
+      banner (hanya lewat ribbon).
+- [ ] **Isi dialog** (klik ribbon Start from Line dengan data crash): judul "Lanjutkan dari Baris" / "Start From
+      Line"; deskripsi; "Pekerjaan Anda (total Y baris) terhenti sekitar baris X"; "Disarankan mulai sekitar
+      baris X-10"; input "Mulai dari baris:" TERISI X-10 dan bisa diedit; "Safe Height (Z), mm:" terisi 10;
+      ringkasan "Z akan naik ke Zxx ... Urutan sebelum baris N: Z ke ... → spindle ... → gerak cepat ke X.. Y..
+      → turun ke Z.. (F..) → feed F.."; kotak ORANYE "Mesin akan LANGSUNG bergerak begitu tombol di bawah
+      diklik"; catatan Home/Set Zero; tombol "Mulai dari Baris Ini / Start from Line".
+- [ ] **Validasi**: baris di luar 1..Y, kosong, atau Safe Height di luar 0..500 → tombol abu-abu + pesan
+      merah. Mesin tidak terhubung/tidak idle (atau job berjalan) → abu-abu dalam ~0,5 detik. Baris yang
+      tidak bisa dilanjutkan (memotong tanpa kata F di mana pun sebelumnya) → abu-abu + alasan.
+- [ ] **PALING PENTING — satu klik, satu job, dari baris N, DITERIMA controller**: klik "Mulai dari Baris
+      Ini". **Harapan**: dialog menutup; mesin LANGSUNG menaikkan Z, menyalakan spindle, bergerak cepat ke
+      titik awal baris N, turun, lalu memotong dari baris N — tanpa menekan Run lagi. TIDAK ada error di
+      log/toast (dulu error:22 / error:33 pada baris pertama yang berupa busur tanpa F). Uji dengan file
+      yang BANYAK BUSUR (G2/G3) dan perintah spindle-nya (`S16000M3`) SETELAH gerakan pertama (file Endcap).
+      Log: "GCODE from line N sent to backend". Baris-baris yang sudah selesai TIDAK dikirim ulang.
+- [ ] **Tampilan TETAP/PINDAH KE 3D View**: setelah tombol akhir diklik, layar berada di tab **3D View**
+      (tidak pindah ke GCODE Editor atau Log/Serial Console) sehingga gerakan Z naik dan mesin terlihat
+      langsung. Dari tab lain (mis. klik kanan di GCODE Editor) → layar berpindah KE 3D View. Tombol Stop di
+      ribbon tetap terlihat dan berfungsi; tekan untuk memastikan berhenti seketika.
+- [ ] **Klik ganda**: klik cepat dua kali pada tombol akhir → hanya SATU job terkirim.
+- [ ] **Klik kanan → "Recover job from Line"**: dialog sama, terisi baris yang diklik - 10, teks "Anda memilih
+      baris N". **Ribbon tanpa data crash**: dialog terbuka, terisi baris kursor/scroll, "Anda bebas mulai dari
+      baris mana pun". Ribbon tanpa file sama sekali: pesan "Buka file G-code dulu".
+- [ ] **File belum dimuat** (app baru, editor kosong, ada data crash): ribbon Start from Line → pesan "Buka file G-code dulu"
+      (TIDAK ada dialog pilih file). Buka file lalu klik lagi → dialog terbuka. Ada data crash untuk file LAIN /
+      ejaan nama beda → dialog tetap terbuka (mulai baris 1) dengan catatan bahwa data tersimpan diabaikan.
+- [ ] **Tanpa data crash sama sekali**: ribbon Start from Line dengan file dimuat → dialog yang sama (baris 1,
+      Safe Height 10 mm), TIDAK pernah membuka dialog browse file.
+- [ ] **File khusus**: file inci (G20) → Z naik benar; file G91 (inkremental) → tombol abu-abu dengan pesan;
+      file tanpa Z → Z naik = Safe Height.
+- [ ] **Job dihentikan alarm lalu Clear Alarm**: data recovery TETAP ADA (dulu terhapus sebagai "completed").
+- [ ] **Setelan mundur (opsional)**: di console developer `localStorage.setItem('recoveryRewindLines','25')`,
+      buka dialog → terisi X-25.
 
 ---
 
