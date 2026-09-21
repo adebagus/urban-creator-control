@@ -438,5 +438,63 @@ test('structural: every place that dumps the queue announces first, or is the ge
     const isGenuineCompletion = /io\.sockets\.emit\('jobComplete'/.test(scope);
     assert.ok(announces || isGenuineCompletion,
       where + ' dumps the queue without announcing a stopped job - a job killed here would vanish from the job history');
+    if (!isGenuineCompletion) {
+      // a job killed here must keep its "Recover Job" record: freeze it BEFORE the dump, or the next
+      // "ok" on the emptied queue reads as "every line sent" and the record is wiped as "completed"
+      assert.ok(/jobRecovery\.finish\(/.test(scope),
+        where + ' dumps the queue without freezing the recovery record (jobRecovery.finish) - Clear Alarm used to erase the record this way');
+    }
   }
+});
+
+// --- Clear Alarm must not erase the "Recover Job" record --------------------------------------------
+// Seen on a real test: a job was rejected by the controller, the operator clicked Clear Alarm, and
+// six seconds later the log said "Job recovery data cleared (completed)". Clear Alarm (method 2) dumped the
+// queue without freezing the record; the next "ok" on the empty queue then looked like "every line sent",
+// and the controller going Idle wiped the record as if the job had finished.
+
+test('Clear Alarm (method 2) mid-job KEEPS the recovery record as "interrupted" - it is not wiped as "completed"', () => {
+  const h = harness();
+  h.startJob(300, { fileName: 'part.nc' });
+  for (let i = 0; i < 150; i++) h.ack();
+  assert.ok(h.ctx.jobRecovery.isTracking(), 'the job is tracked');
+
+  h.clearAlarm(2);
+
+  // what follows on the real machine: "ok" for the reset commands on the emptied queue, then Idle
+  h.ack();
+  h.ctx.jobRecovery.onIdle(h.ctx.sentBuffer.length === 0);
+
+  const rec = h.ctx.jobRecovery.peek();
+  assert.ok(rec, 'the recovery record must still exist');
+  assert.equal(rec.state, 'interrupted');
+  assert.ok(rec.resumeLine >= 100, 'and it still points at where the job got to (' + rec.resumeLine + ')');
+  assert.equal(h.ctx.jobRecovery.isTracking(), false, 'the dead job is no longer being tracked');
+});
+
+test('Clear Alarm right after the job started keeps the record too (an early rejection is exactly when recovery matters)', () => {
+  const h = harness();
+  h.startJob(300, { fileName: 'part.nc' });
+  h.clearAlarm(2);
+  h.ack();
+  h.ctx.jobRecovery.onIdle(true);
+  const rec = h.ctx.jobRecovery.peek();
+  assert.ok(rec);
+  assert.equal(rec.state, 'interrupted');
+});
+
+test('Clear Alarm method 1 ($X only) leaves the running job\'s record alone', () => {
+  const h = harness();
+  h.startJob(300, { fileName: 'part.nc' });
+  for (let i = 0; i < 20; i++) h.ack();
+  h.clearAlarm(1);
+  assert.ok(h.ctx.jobRecovery.isTracking(), 'still tracked');
+});
+
+test('a job that genuinely finishes still clears its record when the controller goes Idle', () => {
+  const h = harness();
+  h.startJob(20, { fileName: 'part.nc' });
+  for (let i = 0; i < 20; i++) h.ack();
+  h.ctx.jobRecovery.onIdle(h.ctx.sentBuffer.length === 0);
+  assert.equal(h.ctx.jobRecovery.peek(), null, 'completed jobs leave no record');
 });

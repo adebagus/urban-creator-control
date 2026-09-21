@@ -2463,6 +2463,11 @@ io.on("connection", function(socket) {
         case 2:
           debug_log('Emptying Queue');
           announceJobStopped('alarm-reset'); // before the dump below
+          // P9: the dump below kills the job. Freeze its recovery record first (like
+          // stop() and stopPort()) - otherwise the next "ok" on the emptied queue
+          // looks like "every line sent" and, once the controller is Idle, the
+          // record is wiped as "completed".
+          jobRecovery.finish('interrupted');
           status.comms.queue = 0
           queuePointer = 0;
           gcodeQueue.length = 0; // Dump the queue
