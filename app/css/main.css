@@ -77,6 +77,47 @@ body {
   box-shadow: 0 0 2px 2px #ddd;
 }
 
+/* GCODE Editor active line (the line being executed while a job runs - editor.gotoLine() follows
+   it; it is also the cursor line when editing): the app's bright green #22c55e (same as
+   .jogmode-active / .atc-active) instead of the theme's light gray. The sqlserver theme's default token
+   colors are unreadable on that green (red G/M words 1.75:1, gray X/Y/Z 1.73:1, green comments
+   2.25:1, white 2.28:1), so #editor gets darker tokens that read on white AND on the green -
+   contrast on #22c55e (WCAG):
+     #000000 numbers / F S words ........ 9.2:1
+     #6b0000 G / M words (string) ....... 5.7:1
+     #003d00 comments ................... 5.5:1
+     #2b2b2b X Y Z, brackets ............ 6.2:1
+   The gutter number of that line gets the same green. Ids beat the theme's own selectors. */
+#editor .ace_marker-layer .ace_active-line {
+  background: #22c55e;
+}
+
+#editor .ace_gutter-active-line {
+  background-color: #22c55e;
+  color: #000000;
+}
+
+#editor .ace_string {
+  color: #6b0000;
+}
+
+#editor .ace_comment {
+  color: #003d00;
+}
+
+#editor .ace_keyword.ace_operator,
+#editor .ace_lparen,
+#editor .ace_rparen,
+#editor .ace_punctuation {
+  color: #2b2b2b;
+}
+
+#editor .ace_keyword,
+#editor .ace_support.ace_function,
+#editor .ace_constant.ace_language {
+  color: #00008b;
+}
+
 #fluidnceditor {
   /* See #macros above - same fix, same reasoning. */
   min-height: 300px;
