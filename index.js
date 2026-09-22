@@ -4011,13 +4011,27 @@ if (isElectron()) {
 function stop(data) {
   //data = { stop: false, jog: false, abort: true}
   if (status.comms.connectionStatus > 0) {
+    // A jog-cancel (data.jog: the orange Stop Jog button, released continuous-jog keys)
+    // is ONLY 0x85, which the controller honours while it is jogging - during a job it is
+    // ignored, while the server below would still dump its queue and report "Connected",
+    // leaving the machine running whatever is already in its RX buffer and planner with
+    // every Stop button disabled. So when a job is running the request is a FULL stop
+    // (hold, then reset). "Running" is judged BEFORE the queue is dumped and NOT by the
+    // queue length alone: manual jog commands ("$J=...") are queued too, and a plain jog
+    // release must stay a plain 0x85.
+    //   3 / 4          streaming / paused job (only runJob sets these)
+    //   isTracking()   every line sent but the controller has not reported Idle yet
+    //   jobStartTime   a stamped real job with lines still queued
+    var jobRunning = status.comms.connectionStatus == 3 || status.comms.connectionStatus == 4 ||
+      jobRecovery.isTracking() || (!!jobStartTime && gcodeQueue.length > 0);
+    var jogOnly = !!(data && data.jog) && !jobRunning;
     // P9: snapshot where the job had got to BEFORE the queue is dumped below.
     // The record is deliberately KEPT (state "stopped"): "Recover a stopped
     // job" is exactly what the ribbon button is for (tool broke -> Stop ->
     // swap tool -> resume). It is cleared when the job completes, when the
     // user discards it, or when the next job starts. A jog-cancel (data.jog)
     // is not a job stop.
-    if (!(data && data.jog)) {
+    if (!jogOnly) {
       jobRecovery.finish('stopped');
     }
     // Before the resets further down clear jobStartTime and the queue. Applies
@@ -4028,13 +4042,13 @@ function stop(data) {
     switch (status.machine.firmware.type) {
       case 'grbl':
 
-        if (data.jog) {
+        if (jogOnly) {
           addQRealtime(String.fromCharCode(0x85)); // canceljog
           debug_log('Sent: 0x85 Jog Cancel');
           debug_log(queuePointer, gcodeQueue)
         }
 
-        if (!data.abort && !data.jog) { // pause motion first.
+        if (!data.abort && !jogOnly) { // pause motion first.
           addQRealtime('!'); // hold
           debug_log('Sent: !');
         }
@@ -4045,7 +4059,7 @@ function stop(data) {
         }
 
         debug_log('Cleaning Queue');
-        if (!data.jog) {
+        if (!jogOnly) {
           setTimeout(function() {
             addQRealtime(String.fromCharCode(0x18)); // ctrl-x
             debug_log('Sent: Code(0x18)');

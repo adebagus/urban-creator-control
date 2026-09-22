@@ -307,9 +307,9 @@ test('P9 recovery: the record is cleared on controller Idle with nothing left un
   assert.ok(!/jobRecovery\.clear\(/.test(fnBody(src, 'send1Q')), 'send1Q means "sent", not "finished" - it must not clear the record');
 });
 
-test('P9 recovery: every way a job dies snapshots first (stop, connection loss, quit) - and a jog-cancel is not a stop', () => {
+test('P9 recovery: every way a job dies snapshots first (stop, connection loss, quit) - and a plain jog-cancel (no job running) is not a stop', () => {
   const src = readLF('index.js');
-  assert.match(fnBody(src, 'stop'), /if\s*\(!\(data\s*&&\s*data\.jog\)\)\s*\{\s*(\/\/[^\n]*\n\s*)*jobRecovery\.finish\('stopped'\)/);
+  assert.match(fnBody(src, 'stop'), /if\s*\(!jogOnly\)\s*\{\s*(\/\/[^\n]*\n\s*)*jobRecovery\.finish\('stopped'\)/);
   assert.match(fnBody(src, 'stopPort'), /^function stopPort\(\) \{\s*(\/\/[^\n]*\n\s*)*jobRecovery\.finish\('interrupted'\);/, 'must be the FIRST thing stopPort does - it wipes the queue right after');
   const quit = fnBody(src, 'quitAndCleanup');
   assert.ok(quit.indexOf('jobRecovery.finish(') > quit.indexOf('isQuitting = true'), 'after the user confirmed the quit');
