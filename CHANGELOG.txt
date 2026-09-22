@@ -1,3 +1,9 @@
+v2.0.0
+- Urban Creator CONTROL fork release (no longer numbered like OpenBuilds CONTROL)
+- Job recovery: the interrupted / stopped job is remembered (line in original file numbers); "Start from Line" dialog (ribbon and editor right-click) restarts safely from any line
+- Reconnect notice for an unfinished job; editor active-line highlight follows the real file line, in bright green
+- Stop Jog is a full stop while a job runs; jog buttons stay off / Stop stays on while the controller reports Run or Hold
+- Security hardening (XSS sinks escaped, origin checks) and DEV build isolation
 v1.0.390
 - Removed mailling list signup form to allow access to CONTROL
 - Lowered update check frequency
