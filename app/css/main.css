@@ -569,12 +569,20 @@ select {
   color: #d6d6d6;
 }
 
+/* The (x) keeps a small glyph but a 32x32 click area (it used to be ~15x22 and hard to hit),
+   centred in the corner. */
 .recovery-banner .recovery-banner-close {
   position: absolute;
-  top: 4px;
-  right: 8px;
-  padding: 0 4px;
+  top: 2px;
+  right: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
   border: 0;
+  border-radius: 4px;
   background: transparent;
   color: #ffffff;
   font-size: 22px;
@@ -584,6 +592,7 @@ select {
 
 .recovery-banner .recovery-banner-close:hover {
   color: #fa6800;
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .recovery-banner .button:hover {
