@@ -130,7 +130,7 @@ test('the notifications only inform: neither the banner nor the app-start modal 
   modal.flush();
   assert.equal(modal.dialogs.length, 1, 'closing opens nothing');
   assert.equal(modal.posted.length, 0);
-  assert.deepEqual(modal.emits, [], 'and asks the server for nothing - the saved job is kept');
+  assert.deepEqual(modal.emits, ['discardRecovery'], 'closing the app-start modal only tells the server to forget the job - nothing else');
 });
 
 test('the ribbon Start from Line button is the deliberate way in - it still works after a notification was closed', () => {

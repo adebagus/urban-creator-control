@@ -37,7 +37,7 @@ function extractFunction(src, name) {
 
 const NAMES = ['showRecoveryOffer', 'recoveryEscapeHtml', 'recoveryRewindLines', 'recoverySuggestedLine', 'recoveryOfferInfoHtml', 'recoveryOfferKey',
   'recoveryMarkOffered', 'shouldAutoOfferRecovery', 'offerRecoveryOnReconnect', 'dismissRecoveryBanner', 'showRecoveryBanner'];
-const VARS = ['var RECOVERY_DEFAULT_REWIND', 'var recoveryOfferOpen', 'var RECOVERY_AUTO_OFFER_STATES', 'var recoveryOfferedKeys', 'var RECOVERY_NOTICE_HINT'];
+const VARS = ['var RECOVERY_DEFAULT_REWIND', 'var recoveryOfferOpen', 'var RECOVERY_AUTO_OFFER_STATES', 'var recoveryOfferedKeys', 'var RECOVERY_NOTICE_HINT', 'var RECOVERY_MODAL_HINT'];
 
 function makeEnv(opts = {}) {
   const env = { banners: [], handlers: {}, dialogs: 0, dialogOpts: null, emitted: [], started: [], splashVisible: !!opts.splashVisible, pending: [], info: opts.info };
@@ -210,13 +210,15 @@ function openModal(info) {
   return env;
 }
 
-test('modal: bilingual title, the info text, the hint, ONE action "Tutup / Close" and a close (x)', () => {
+test('modal: bilingual title, the info text, the DISCARD hint, ONE action "Tutup / Close" and a close (x)', () => {
   const env = openModal(rec());
   const o = env.dialogOpts;
   assert.match(o.title, /Pekerjaan belum selesai ditemukan/);
   assert.match(o.title, /class='recovery-title-en'>Unfinished job found</);
   assert.ok(o.content.includes(env.ctx.recoveryOfferInfoHtml(rec())));
-  assert.ok(o.content.includes('Menutup ini tidak menghapus data.'));
+  assert.ok(o.content.includes('Menutup ini menghapus data pekerjaan tersimpan (tidak diingatkan lagi); Start from Line tetap bisa dipakai manual.'));
+  assert.ok(o.content.includes('Closing this discards the saved job data (no more reminders); Start from Line still works manually.'));
+  assert.ok(!/tidak menghapus data|keeps the data/.test(o.content), 'the modal must not claim the data is kept');
   assert.equal(o.actions.length, 1);
   assert.equal(o.actions[0].caption, 'Tutup / Close');
   assert.equal(o.closeButton, true);
@@ -231,11 +233,43 @@ test('modal: NO action can start the recovery - only "Tutup / Close" and the (x)
   assert.equal(env.pending.length, 0, 'no delayed hand-off to another dialog');
 });
 
-test('modal: closing it - by the button or the (x) - keeps the saved data and starts nothing', () => {
+test('modal: closing it - by "Tutup / Close" or the (x), both end in onClose - DISCARDS the saved data and starts nothing', () => {
   const env = openModal(rec());
+  assert.deepEqual(env.emitted, [], 'opening it sends nothing');
+  env.dialogOpts.actions[0].onclick();
+  assert.deepEqual(env.emitted, [], 'the button itself only closes; the discard happens in onClose (shared by the button and the x)');
   env.dialogOpts.onClose();
-  assert.deepEqual(env.emitted, [], 'nothing is sent to the server: no discardRecovery');
-  assert.deepEqual(env.started, []);
+  assert.deepEqual(env.emitted, ['discardRecovery'], 'exactly one discardRecovery, nothing else');
+  assert.deepEqual(env.started, [], 'and nothing is started');
+});
+
+test('modal: the discard is sent ONCE per close, and only when it is closed - not when it opens or is skipped', () => {
+  const env = openModal(rec());
+  env.ctx.showRecoveryOffer(rec({ savedAt: 5 })); env.flush(); // refused: one is already open
+  assert.deepEqual(env.emitted, []);
+  env.dialogOpts.onClose();
+  assert.equal(env.emitted.filter((e) => e === 'discardRecovery').length, 1);
+  const bad = makeEnv();
+  bad.ctx.showRecoveryOffer({}); bad.flush(); // unusable record: no modal, so no discard either
+  assert.deepEqual(bad.emitted, []);
+});
+
+test('modal: closing without a socket (page without one) does not throw', () => {
+  const env = openModal(rec());
+  env.ctx.socket = undefined;
+  assert.doesNotThrow(() => env.dialogOpts.onClose());
+});
+
+test('banner: closing the reconnect banner NEVER discards - its hint still says the data is kept (regression guard)', () => {
+  const env = makeEnv({ info: rec() });
+  env.ctx.offerRecoveryOnReconnect();
+  env.emitted.length = 0;
+  env.handlers['#recoveryBannerClose']();
+  assert.deepEqual(env.emitted, [], 'no discardRecovery from the banner');
+  const html = extractFunction(RESUME, 'showRecoveryBanner');
+  assert.ok(html.includes('RECOVERY_NOTICE_HINT') && !html.includes('RECOVERY_MODAL_HINT'));
+  assert.ok(!/discardRecovery/.test(extractFunction(RESUME, 'dismissRecoveryBanner')));
+  assert.match(RESUME, /Menutup ini tidak menghapus data\. \/ To resume: use the ribbon Start from Line button\. Closing this keeps the data\./);
 });
 
 test('modal: uses the SAME info text as the banner', () => {
@@ -282,9 +316,14 @@ test('modal: waits for the splash; ignores unusable records; escapes the file na
 test('wiring: neither notification can reach the recovery flow - by construction', () => {
   for (const n of ['showRecoveryBanner', 'showRecoveryOffer', 'offerRecoveryOnReconnect']) {
     const body = extractFunction(RESUME, n);
-    assert.ok(!/recoverJob|recoverCrashedJob|showStartFromLine|startFromHere|sendGcode|XMLHttpRequest|runJob|setInterval|discardRecovery/.test(body), n + ' must stay information only');
+    assert.ok(!/recoverJob|recoverCrashedJob|showStartFromLine|startFromHere|sendGcode|XMLHttpRequest|runJob|setInterval/.test(body), n + ' must stay information only');
   }
-  assert.ok(!/discardRecovery/.test(RESUME), 'the UI never asks the server to forget the saved job');
+  // only the app-start modal's onClose asks the server to forget the saved job
+  assert.equal((RESUME.match(/discardRecovery/g) || []).length, 2, 'one call + its comment mention, nowhere else');
+  assert.match(extractFunction(RESUME, 'showRecoveryOffer'), /onClose: function\(\) \{\s*recoveryOfferOpen = false;[^}]*socket\.emit\('discardRecovery'\);/);
+  for (const n of ['showRecoveryBanner', 'offerRecoveryOnReconnect', 'dismissRecoveryBanner']) {
+    assert.ok(!/discardRecovery/.test(extractFunction(RESUME, n)), n + ' must never discard');
+  }
 });
 
 test('wiring: showGrbl(true) triggers the offer, showGrbl(false) does not; connect code is untouched', () => {

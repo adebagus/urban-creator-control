@@ -78,8 +78,11 @@ function recoveryOfferInfoHtml(info) {
 // The automatic notifications (banner, app-start modal) are INFORMATION ONLY. They
 // appear on their own, at a moment the user did not choose, so they must not be
 // able to start anything: the way on is the ribbon "Start from Line" button (or the
-// editor's right-click), which the user presses deliberately. Closing a
-// notification never deletes the saved data.
+// editor's right-click), which the user presses deliberately. Closing the reconnect
+// banner never deletes the saved data; closing the app-start modal does (see below).
+// The app-start MODAL's hint differs from the banner's: closing the modal DISCARDS the saved data
+// (it would otherwise come back at every app start), closing the reconnect banner does not.
+var RECOVERY_MODAL_HINT = 'Menutup ini menghapus data pekerjaan tersimpan (tidak diingatkan lagi); Start from Line tetap bisa dipakai manual. / Closing this discards the saved job data (no more reminders); Start from Line still works manually.';
 var RECOVERY_NOTICE_HINT = 'Untuk melanjutkan: tombol Start from Line di ribbon. Menutup ini tidak menghapus data. / To resume: use the ribbon Start from Line button. Closing this keeps the data.';
 
 // Is there a program in the editor to start from?
@@ -193,16 +196,21 @@ function showRecoveryOffer(info) {
     recoveryOfferOpen = true;
     recoveryMarkOffered(info); // the auto-offer on reconnect must not repeat this one
 
-    // Information only: no button starts anything, and closing keeps the saved data.
+    // No button starts anything. Closing it - "Tutup / Close" or the (x) - means "I no longer care
+    // about this job": the saved data is discarded (same server call as before, discardRecovery),
+    // otherwise it would be offered again at every app start. The reconnect BANNER is different:
+    // it appears mid-session, and closing it keeps the data.
     Metro.dialog.create({
       title: "<i class='fas fa-fw fa-route'></i> Pekerjaan belum selesai ditemukan" +
         "<div class='recovery-title-en'>Unfinished job found</div>",
       content: '<div class="remark warning">' + recoveryOfferInfoHtml(info) + '</div>' +
-        '<p class="text-small">' + RECOVERY_NOTICE_HINT + '</p>',
+        '<p class="text-small">' + RECOVERY_MODAL_HINT + '</p>',
       clsDialog: 'dark',
       closeButton: true,
       onClose: function() {
         recoveryOfferOpen = false;
+        // the server ignores this while a live job is being tracked
+        if (typeof socket !== 'undefined' && socket) socket.emit('discardRecovery');
       },
       actions: [{
         caption: "Tutup / Close",

@@ -59,7 +59,7 @@ const FUNCS = [
 const VARS = [
   'var RECOVERY_DEFAULT_REWIND',
   'var recoveryOfferOpen', 'var RECOVERY_AUTO_OFFER_STATES', 'var recoveryOfferedKeys',
-  'var RECOVERY_DEFAULT_SAFE_Z', 'var RECOVERY_MAX_SAFE_Z', 'var recoveryStartLocked', 'var RECOVERY_NOTICE_HINT',
+  'var RECOVERY_DEFAULT_SAFE_Z', 'var RECOVERY_MAX_SAFE_Z', 'var recoveryStartLocked', 'var RECOVERY_NOTICE_HINT', 'var RECOVERY_MODAL_HINT',
   'var RECOVERY_UNSAFE_HEADER_RE', 'var RECOVERY_PREMOVE_RE',
 ];
 
