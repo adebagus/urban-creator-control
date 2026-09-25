@@ -106,6 +106,24 @@ function setADist(newADist) {
   jogdistA = newADist;
 }
 
+// Startup units. Only an explicit, saved "in" gives inch-mode; a saved "mm", nothing saved (a fresh
+// install, a new profile, a phone browser that never chose) and anything unrecognised all give mm-mode -
+// the default. (This used to default to inches.) It is a display preference only; firmware $13 is not
+// involved (CONTROL needs $13=0 and handles inches itself).
+function restoreUnitsMode() {
+  var saved = null;
+  try {
+    saved = localStorage.getItem('unitsMode');
+  } catch (e) {}
+  if (saved == "in") {
+    inMode();
+    $('#inMode').click()
+  } else {
+    mmMode(); // also (re)writes the saved value, so an unrecognised one is repaired
+    $('#mmMode').click()
+  }
+}
+
 function mmMode() {
   unit = "mm";
   localStorage.setItem('unitsMode', unit);
@@ -208,19 +226,7 @@ $(document).ready(function() {
     document.activeElement.blur();
   });
 
-  if (localStorage.getItem('unitsMode')) {
-    if (localStorage.getItem('unitsMode') == "mm") {
-      mmMode()
-      $('#mmMode').click()
-    } else if (localStorage.getItem('unitsMode') == "in") {
-      inMode();
-      $('#inMode').click()
-    }
-  } else {
-    // default to inches
-    inMode();
-    $('#inMode').click()
-  }
+  restoreUnitsMode();
 
   $(document).mousedown(function(e) {
     safeToUpdateSliders = false;
