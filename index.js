@@ -1042,14 +1042,14 @@ io.on("connection", function(socket) {
     const {
       shell
     } = require('electron')
-    shell.openExternal('https://docs.openbuilds.com/')
+    shell.openExternal('https://urbancreator.id')
   });
 
   socket.on("openforum", function(data) {
     const {
       shell
     } = require('electron')
-    shell.openExternal('https://openbuilds.com/threads/openbuilds-control-software.13121/')
+    shell.openExternal('https://forum.urbancreator.id')
   });
 
   socket.on("gpuinfo", function(data) {
@@ -1963,13 +1963,13 @@ io.on("connection", function(socket) {
             if (status.interface.connected) {
               var output = {
                 'command': 'connect',
-                'response': `ERROR!:  Connection established to INTERFACE, but no response from Grbl on the upstream controller. See https://docs.openbuilds.com/interface for more details. Closing port ` + port.path,
+                'response': `ERROR!:  Connection established to INTERFACE, but no response from Grbl on the upstream controller. Check that the controller is powered on and properly connected to the Interface. Closing port ` + port.path,
                 'type': 'error'
               }
             } else {
               var output = {
                 'command': 'connect',
-                'response': `ERROR!:  No Response from Controller - See https://docs.openbuilds.com/doku.php?id=docs:blackbox:faq-usb-connection-failed for troubleshooting information. Closing port ` + port.path,
+                'response': `ERROR!:  No Response from Controller. Check that it is powered on, the USB cable is connected, and the correct port is selected. Closing port ` + port.path,
                 'type': 'error'
               }
             }
