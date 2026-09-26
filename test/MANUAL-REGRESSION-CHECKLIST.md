@@ -362,3 +362,26 @@ yang dikirim klien (`$$`) tidak pernah sampai ke controller, dan log palsu
 Semua yang TIDAK masuk daftar di atas sudah punya automated test yang jalan tiap
 `npm test` — kalau waktu terbatas, boleh percaya ke automated test untuk P0/P3/P4/P5/
 struktur-P6 dan fokus waktu manual ke 5 area di atas.
+
+---
+
+## Enumerasi setting grblHAL ($ES)
+
+Tes dengan controller grblHAL yang benar-benar melaporkan `ENUMS` di `[NEWOPT:...]` (jawaban `$I`) dan, kalau
+ada, dengan controller Grbl/FluidNC biasa. (Token `ES` di NEWOPT = E-stop, BUKAN enumerasi setting.)
+
+- [ ] **grblHAL + ENUMS**: sambungkan. Di console muncul SATU baris "Read N setting definitions from the
+      controller" dan TIDAK ada baris mentah `[SETTING:...]`. Setting yang dulu ";unknown" ($160-$162, $485,
+      $539, $676, $680, ...) sekarang punya nama di log `$$`, di file backup, dan di dialog progres simpan.
+- [ ] **Tab Advanced Settings**: baris untuk setting di luar template statis menampilkan nama, satuan (mm, ms, ...),
+      dan petunjuk (rentang / label bit); tooltip baris berisi keterangan yang sama; "restart the controller after
+      saving" muncul untuk setting yang butuh reboot. Ubah satu nilai, Save: tersimpan (`$160=...`) seperti
+      setting biasa.
+- [ ] **Edit belum disimpan tidak hilang**: ubah satu nilai lalu (sambil menunggu) tekan Refresh - tabel tidak
+      dibangun ulang diam-diam saat ada edit yang belum disimpan.
+- [ ] **Firmware TANPA ENUMS** (grblHAL lama, Grbl 1.1, FluidNC): `$ES` TIDAK PERNAH dikirim (lihat serial log /
+      console: tidak ada `$ES`), tidak ada `error:3`, panel persis seperti sebelumnya (kunci merah + input biasa,
+      ";unknown" di log).
+- [ ] **Sambung ulang / ganti controller**: putus lalu sambung ke grblHAL yang sama membaca ulang sekali; pindah
+      ke firmware lain tidak membawa nama setting dari controller sebelumnya.
+- [ ] **Halaman Jog HP** terbuka bersamaan: tidak ada `$ES` ganda (hanya app desktop yang meminta).
