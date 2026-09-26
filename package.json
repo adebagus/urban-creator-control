@@ -4,17 +4,14 @@
   "license": "GPL-3.0",
   "description": "Urban Creator CONTROL CNC Machine Host Software",
   "author": "Urban Creator CONTROL",
-  "resolutions": {
-    "@electron/notarize": "2.3.2"
-  },
   "engines": {
     "node": "20.x"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.2.0",
     "electron": "^43.7.5",
     "electron-builder": "^26.15.3",
     "electron-builder-notarize": "^1.5.2",
-    "electron-rebuild": "^3.2.9",
     "ncp": "^2.0.0"
   },
   "dependencies": {

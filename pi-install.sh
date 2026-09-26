@@ -30,7 +30,7 @@ echo "(8/10) Installing Urban Creator CONTROL dependencies..."
 npm install
 echo "(9/10) Recompiling Urban Creator CONTROL dependencies..."
 npm rebuild
-npm install electron-rebuild
+# @electron/rebuild is a devDependency, installed by "npm install" above
 ~/urban-creator-control/node_modules/.bin/electron-rebuild
 echo "(10/10) Creating Menu and Desktop Shortcuts..."
 cp ~/urban-creator-control/pi-shortcut.desktop ~/Desktop/urban-creator-control.desktop
