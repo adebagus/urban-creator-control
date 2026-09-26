@@ -8,6 +8,10 @@ Urban Creator CONTROL is a fork of [OpenBuilds CONTROL](https://github.com/OpenB
 
 This is a work in progress, actively used and refined based on real-world shop use. Current version: **v2.0.0**. Contributions, issue reports, and feedback are welcome.
 
+This is a personal fork maintained for Urban Creator's own machines and customers. It's shared publicly for transparency and community feedback, not as a general-purpose OpenBuilds CONTROL replacement.
+
+Ini fork pribadi yang dikelola untuk kebutuhan mesin CNC Urban Creator dan pelanggan kami. Dibuka ke publik untuk transparansi dan evaluasi bersama komunitas, bukan sebagai pengganti umum OpenBuilds CONTROL.
+
 ## What's different from upstream
 
 Since forking, we've made a number of changes beyond rebranding:
