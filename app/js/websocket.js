@@ -30,6 +30,9 @@ $(document).ready(function() {
 
 function showGrbl(bool, firmware) {
   //console.log(firmware)
+  // grblHAL settings enumeration ($ES, see grbl-settings-enum.js): remember which platform this connection
+  // is ('' on disconnect) - $ES is only ever sent to grblHAL that reports ENUMS.
+  grblEnumSetPlatform(bool && firmware ? firmware.platform : '');
   if (bool) {
     if (firmware.platform == "grblHAL" || firmware.platform == "gnea") { // Doesn't use $$ settings, uses config.yaml
       setTimeout(function() {
@@ -260,6 +263,8 @@ function initSocket() {
 
   socket.on('data', function(data) {
     // console.log(data)
+    // the answer to our own $ES request (raw [SETTING:...] protocol lines) is kept, not printed
+    if (grblEnumHandleData(data)) return;
     var toPrint = escapeHTML(data.response);
 
     var lineColor = "fg-dark"
@@ -281,11 +286,7 @@ function initSocket() {
     if (data.response.indexOf('$') === 0) {
 
       var key = data.response.split('=')[0].substr(1);
-      if (grblSettingsTemplate2[key] !== undefined) {
-        var descr = grblSettingsTemplate2[key].title
-      } else {
-        var descr = "unknown"
-      }
+      var descr = grblSettingName(key, true)
       toPrint = data.response + "  ;" + descr
       var icon = ''
       var source = data.command

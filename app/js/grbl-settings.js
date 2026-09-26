@@ -122,11 +122,7 @@ function backupGrblSettings() {
   for (key in grblParams) {
     var key2 = key.split('=')[0].substr(1);
 
-    if (grblSettingsTemplate2[key2] !== undefined) {
-      var descr = grblSettingsTemplate2[key2].title
-    } else {
-      var descr = "unknown"
-    }
+    var descr = grblSettingName(key2, false)
     grblBackup += key + "=" + grblParams[key] + "  ;  " + descr + "\n"
   }
   if (laststatus.machine.name.length > 0) {
@@ -305,17 +301,8 @@ function grblPopulate() {
                 <td>` + grblSettingsTemplate2[key2].utils + `</td>
               </tr>`
       } else {
-        template += `
-              <tr>
-                <td>` + key + `</td>
-                <td><span class="tally alert">` + key + `</span></td>
-                <td><input data-role="input" data-clear-button="false"
-                    data-append="?" type="text"
-                    value="` + grblParams[key] + `"
-                    id="val-` + key2 + `-input"></td>
-                <td></td>
-              </tr>
-              `
+        // not in the static templates: named from the controller's $ES answer when there is one
+        template += grblEnumRowHtml(key, key2, grblParams[key])
       }
     }
 
@@ -540,11 +527,7 @@ function grblSaveSettings() {
       //console.log(counter, toSaveCommands[counter]);
       var newParam = toSaveCommands[counter].split("=")[0];
       var newParamKey = newParam.substr(1);
-      if (grblSettingsTemplate2[newParamKey] !== undefined) {
-        var newParamName = grblSettingsTemplate2[newParamKey].title
-      } else {
-        var newParamName = "unknown"
-      }
+      var newParamName = grblSettingName(newParamKey, true)
       var newParamVal = toSaveCommands[counter].split("=")[1];
       $("#grblNewParam").html("<code>" + newParam + " : " + newParamName + "</code>")
       $("#grblNewParamVal").html("<code>" + newParamVal + "</code>")
