@@ -902,6 +902,52 @@ app.on('certificate-error', function(event, webContents, url, error,
   callback(true);
 });
 
+// Native file dialogs. Since Electron 43 a dialog without a defaultPath opens in the Downloads folder
+// instead of where it was last used. So each kind of dialog ("gcode": Open GCODE, "interface": the
+// Interface USB drive) starts in the folder the user picked last time - remembered across restarts in
+// userData/dialog-dirs.json - and in Documents when there is none (or it no longer exists).
+var dialogDirs = null;
+
+function dialogDirsFile() {
+  return path.join(electronApp.getPath('userData'), 'dialog-dirs.json');
+}
+
+function loadDialogDirs() {
+  if (dialogDirs) return dialogDirs;
+  dialogDirs = {};
+  try {
+    var saved = JSON.parse(fs.readFileSync(dialogDirsFile(), 'utf8'));
+    if (saved && typeof saved === 'object') {
+      Object.keys(saved).forEach(function(kind) {
+        if (typeof saved[kind] === 'string') dialogDirs[kind] = saved[kind];
+      });
+    }
+  } catch (e) {
+    // no file yet, or unreadable: start from Documents
+  }
+  return dialogDirs;
+}
+
+function dialogStartDir(kind) {
+  var dir = loadDialogDirs()[kind];
+  try {
+    if (dir && fs.statSync(dir).isDirectory()) return dir;
+  } catch (e) {
+    // the folder is gone (removed drive, deleted folder)
+  }
+  return electronApp.getPath('documents');
+}
+
+function rememberDialogDir(kind, dir) {
+  if (typeof dir !== 'string' || dir === '') return;
+  loadDialogDirs()[kind] = dir;
+  try {
+    fs.writeFileSync(dialogDirsFile(), JSON.stringify(dialogDirs));
+  } catch (e) {
+    serialLog('warn', 'Could not remember the last dialog folder: ' + e.message);
+  }
+}
+
 io.on("connection", function(socket) {
 
   debug_log("New IO Connection ");
@@ -960,11 +1006,13 @@ io.on("connection", function(socket) {
 
   socket.on("openFile", function(data) {
     dialog.showOpenDialog(jogWindow, {
-      properties: ['openFile']
+      properties: ['openFile'],
+      defaultPath: dialogStartDir('gcode')
     }).then(result => {
       console.log(result.canceled)
       console.log(result.filePaths)
       var openFilePath = result.filePaths[0];
+      if (!result.canceled && openFilePath) rememberDialogDir('gcode', path.dirname(openFilePath));
       if (openFilePath !== "") {
         debug_log("path" + openFilePath);
         readFile(openFilePath);
@@ -978,10 +1026,12 @@ io.on("connection", function(socket) {
   socket.on("openInterfaceDir", function(data) {
     dialog.showOpenDialog(jogWindow, {
       properties: ['openDirectory'],
-      title: "Select the USB Flashdrive you want to use with Interface"
+      title: "Select the USB Flashdrive you want to use with Interface",
+      defaultPath: dialogStartDir('interface')
     }).then(result => {
       console.log(result.canceled)
       console.log(result.filePaths)
+      if (!result.canceled && result.filePaths[0]) rememberDialogDir('interface', result.filePaths[0]);
       io.sockets.emit("interfaceDrive", result.filePaths[0]);
       status.interface.diskdrive = result.filePaths[0]
     }).catch(err => {
