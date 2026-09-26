@@ -19,8 +19,9 @@ sudo apt-get install -y git
 echo "(5/10) Installing NVM and NodeJS..."
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
 . ~/.nvm/nvm.sh
-nvm install lts/iron
-nvm alias default lts/iron
+# Node 22 ("Jod" LTS): Electron 43 and its build tools need Node >= 22.12
+nvm install lts/jod
+nvm alias default lts/jod
 echo "(6/10) Updating npm..."
 nvm install-latest-npm
 echo "(7/10) Downloading Urban Creator CONTROL source code..."

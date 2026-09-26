@@ -128,9 +128,14 @@ test('P5: package-lock.json exists and is not excluded via .gitignore', () => {
   assert.doesNotMatch(gitignore, /^package-lock\.json\s*$/m);
 });
 
-test('P5: Node engine is pinned', () => {
+test('P5: Node engine is pinned to Node 22 (Electron 43 and its build tools need >= 22.12)', () => {
   const pkg = JSON.parse(read('package.json'));
-  assert.equal(pkg.engines && pkg.engines.node, '20.x');
+  assert.equal(pkg.engines && pkg.engines.node, '>=22.12.0 <23');
+  // everything that picks a Node version must agree with it
+  assert.match(read('.github/workflows/build.yml'), /node-version: 22\s*$/m, 'CI');
+  assert.equal(read('.nvmrc').trim(), '22', '.nvmrc');
+  assert.match(read('pi-install.sh'), /nvm install lts\/jod\nnvm alias default lts\/jod/, 'Raspberry Pi installer (Node 22 LTS "Jod")');
+  assert.doesNotMatch(read('pi-install.sh'), /lts\/iron/, 'no Node 20 left in the Pi installer');
 });
 
 test('P5: the OpenBuilds changelog auto-fetch on startup is disabled', () => {
