@@ -128,6 +128,22 @@ test('P5: package-lock.json exists and is not excluded via .gitignore', () => {
   assert.doesNotMatch(gitignore, /^package-lock\.json\s*$/m);
 });
 
+test('P5: package-lock.json resolves every package from the official npm registry (no third-party mirror)', () => {
+  // The maintainer's own ~/.npmrc may point npm at a mirror; that setting is not in the repo, so the mirror's host
+  // leaks into the lock file whenever npm records a new or updated package. Everyone else (and CI) should fetch from
+  // registry.npmjs.org. When updating dependencies run npm with --registry=https://registry.npmjs.org/.
+  const lock = JSON.parse(read('package-lock.json'));
+  const hosts = new Set();
+  let checked = 0;
+  for (const [name, entry] of Object.entries(lock.packages)) {
+    if (!name || entry.link || !entry.resolved) continue;
+    checked++;
+    hosts.add(new URL(entry.resolved).host);
+  }
+  assert.ok(checked > 400, 'the lock file lists the packages (' + checked + ')');
+  assert.deepEqual([...hosts], ['registry.npmjs.org'], 'hosts found in package-lock.json: ' + [...hosts].join(', '));
+});
+
 test('P5: Node engine is pinned to Node 22 (Electron 43 and its build tools need >= 22.12)', () => {
   const pkg = JSON.parse(read('package.json'));
   assert.equal(pkg.engines && pkg.engines.node, '>=22.12.0 <23');
