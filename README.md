@@ -34,7 +34,23 @@ npm run run-local      # run in dev mode
 npx electron-builder --win nsis   # build a Windows installer
 ```
 
+## Raspberry Pi (experimental, untested)
+
+> **WARNING: the Raspberry Pi install path has NOT been tested by Urban Creator on real Raspberry Pi hardware.** `pi-install.sh`, `pi-shortcut.desktop` and `pi-update.sh` are inherited from upstream OpenBuilds CONTROL and only adapted (names and repository) for this project. Use them at your own risk, and please tell us how it went.
+
+It assumes Raspberry Pi OS with the default user `pi`. Download the installer, read it, then run it:
+
+```bash
+wget https://raw.githubusercontent.com/adebagus/urban-creator-control/master/pi-install.sh
+less pi-install.sh
+bash pi-install.sh
+```
+
+The desktop shortcut only **starts** the installed application; it never updates it. To update, run `~/urban-creator-control/pi-update.sh` yourself: it shows what will change, asks for confirmation, and refuses to run if you have local changes. Note that `master` is the development branch and can contain changes that nobody has tested on a Raspberry Pi yet.
+
 ## Known limitations
+
+- The Raspberry Pi install path described above is untested on real hardware.
 
 - The Electron runtime is currently on an older version (inherited from upstream); an upgrade is planned but not yet completed.
 - Built installers are not currently code-signed, so Windows SmartScreen may show an "unrecognized publisher" warning on first run.

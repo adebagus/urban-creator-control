@@ -1,9 +1,14 @@
 [Desktop Entry]
-Name=OpenBuilds-CONTROL
+# EXPERIMENTAL / UNTESTED: this Raspberry Pi launcher has NOT been tested by Urban Creator on real hardware.
+# It only STARTS the installed application. It never updates it: to update, run
+# ~/urban-creator-control/pi-update.sh yourself (see the README).
+Name=Urban Creator CONTROL
 Version=1.0
-Comment=OpenBuildsCONTROL
-Exec=bash -c "cd ~/OpenBuilds-CONTROL; git fetch --all; git reset --hard origin/master; MESA_EXTENSION_OVERRIDE=-GL_MESA_framebuffer_flip_y ~/OpenBuilds-CONTROL/node_modules/.bin/electron ~/OpenBuilds-CONTROL"
-Icon=/home/pi/OpenBuilds-CONTROL/build/icons/32x32.png
+Comment=Urban Creator CONTROL
+Exec=bash -c "cd ~/urban-creator-control; MESA_EXTENSION_OVERRIDE=-GL_MESA_framebuffer_flip_y ~/urban-creator-control/node_modules/.bin/electron ~/urban-creator-control"
+# NOTE: the icon path assumes the default user "pi" (Icon= does not expand "~"). Newer Raspberry Pi OS
+# images let you choose another user name: change /home/pi to your home folder if the icon does not show.
+Icon=/home/pi/urban-creator-control/build/icons/32x32.png
 Terminal=false
 Type=Application
 Categories=Other
