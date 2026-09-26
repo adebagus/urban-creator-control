@@ -1,6 +1,6 @@
-# Contributing to OpenBuilds-CONTROL
+# Contributing to Urban Creator CONTROL
 
-Thank you for your interest in contributing to **OpenBuilds-CONTROL**! Whether you're reporting bugs, improving documentation, or writing code, we welcome your contributions. Please take a moment to review this document before you begin contributing.
+Thank you for your interest in contributing to **Urban Creator CONTROL**! Whether you're reporting bugs, improving documentation, or writing code, we welcome your contributions. Please take a moment to review this document before you begin contributing.
 
 ## Table of Contents
 
@@ -13,18 +13,18 @@ Thank you for your interest in contributing to **OpenBuilds-CONTROL**! Whether y
 
 ## Code of Conduct
 
-This project adheres to the [OpenBuilds Code of Conduct](link to code of conduct). By participating, you are expected to uphold this code. Please report unacceptable behavior to [email@example.com].
+This project adheres to the [Code of Conduct](./CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code. Please report unacceptable behavior through the [Urban Creator forum](https://forum.urbancreator.id).
 
 ## How to Contribute
 
 ### Reporting Bugs
 
-If you find a bug, please submit an issue through the [GitHub Issues](https://github.com/OpenBuilds/OpenBuilds-CONTROL/issues) page. Provide detailed information, including:
+If you find a bug, please submit an issue through the [GitHub Issues](https://github.com/adebagus/urban-creator-control/issues) page. Provide detailed information, including:
 - Steps to reproduce the issue
 - Expected behavior
 - Actual behavior
 - Screenshots or error logs, if applicable
-- Version of OpenBuilds-CONTROL and environment details (OS, hardware, etc.)
+- Version of Urban Creator CONTROL and environment details (OS, hardware, etc.)
 
 ### Submitting Pull Requests
 
@@ -37,10 +37,10 @@ We welcome pull requests (PRs) for fixes, features, and improvements! Please ens
 #### Steps to Submit a PR:
 
 1. Fork the repository and clone it locally.
-2. Create a new branch from `main` (e.g., `feature/your-feature-name`).
+2. Create a new branch from `master` (e.g., `feature/your-feature-name`).
 3. Make your changes and commit them with a descriptive message.
 4. Push the branch to your forked repository.
-5. Open a pull request against the `main` branch of OpenBuilds-CONTROL.
+5. Open a pull request against the `master` branch of Urban Creator CONTROL.
 6. Ensure your PR passes all continuous integration (CI) checks.
 
 ## Commit Message Guidelines
@@ -53,4 +53,4 @@ Please follow these guidelines for writing commit messages:
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the [LICENSE](link to LICENSE) of the repository.
+By contributing, you agree that your contributions will be licensed under the GNU General Public License v3.0 (GPL-3.0), as set out in the [LICENSE](./LICENSE) file of the repository.

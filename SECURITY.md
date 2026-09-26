@@ -10,18 +10,20 @@ We aim to support the latest stable release of our software, but **security patc
 
 ## Reporting a Vulnerability
 
-If you discover a vulnerability in this project, please report it by creating an issue on our GitHub repository:
+If you discover a security vulnerability in this project, please report it **privately** using GitHub's private vulnerability reporting, not in a public issue, so that it can be fixed before the details become public:
 
-- Go to the [Issues page](https://github.com/OpenBuilds/OpenBuilds-CONTROL/issues)
-- Create a new issue and provide as much detail as possible, including:
+- Go to the [Report a vulnerability](https://github.com/adebagus/urban-creator-control/security/advisories/new) page (Security tab, then *Report a vulnerability*)
+- Provide as much detail as possible, including:
   - A detailed description of the issue
   - Steps to reproduce the vulnerability
   - Potential impact or risk
 
-We appreciate responsible disclosure and will address valid issues as promptly as possible.
+Please do not disclose the vulnerability publicly until it has been addressed. We appreciate responsible disclosure and will address valid issues as promptly as possible.
+
+For bugs that are not security vulnerabilities, please use the [Issues page](https://github.com/adebagus/urban-creator-control/issues).
 
 ## Disclaimer
 
 All software provided is **as-is** without any warranty, express or implied. **We do not guarantee any security** and recommend users evaluate the risks before using this software.
 
-For further legal terms, please refer to our [Installer License](https://github.com/OpenBuilds/OpenBuilds-CONTROL/blob/master/build/licence.txt).
+For further legal terms, please refer to our [Installer License](https://github.com/adebagus/urban-creator-control/blob/master/build/licence.txt).

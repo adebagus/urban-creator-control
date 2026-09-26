@@ -6,7 +6,7 @@
 ---
 
 ### Please Note:
-1. We don't provide support on GitHub. For assistance, please visit [OpenBuilds Forums](https://openbuilds.com/forums/).
+1. We don't provide support on GitHub. For assistance, please visit [Urban Creator Forum](https://forum.urbancreator.id).
 2. Ensure that your code adheres to the existing style guidelines (easy to read, easy to contribute).
 
 ---
