@@ -1,7 +1,7 @@
 {
   "name": "urban-creator-control",
   "version": "2.0.0",
-  "license": "AGPL-3.0",
+  "license": "GPL-3.0",
   "description": "Urban Creator CONTROL CNC Machine Host Software",
   "author": "Urban Creator CONTROL",
   "resolutions": {
@@ -48,7 +48,7 @@
   "keywords": [
     "usb"
   ],
-  "repository": "TODO: set Urban Creator CONTROL's own repository URL here in P5",
+  "repository": "https://github.com/adebagus/urban-creator-control",
   "build": {
     "publish": null,
     "afterSign": "./notarize.js",
