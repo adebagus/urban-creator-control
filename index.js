@@ -38,7 +38,7 @@ function showErrorDialog(err, attempts) {
       buttons: ['OK'],
       title: 'Error',
       message: `An error occured.`,
-      detail: `${err.message}\r\r\rIf you feel this shouldn't be happening, please report it at:\r\rhttps://github.com/OpenBuilds/OpenBuilds-CONTROL/issues`,
+      detail: `${err.message}\r\r\rIf you feel this shouldn't be happening, please report it at:\r\rhttps://github.com/adebagus/urban-creator-control/issues`,
     };
     let window = BrowserWindow.getFocusedWindow()
     dialog.showMessageBoxSync(window, options)
