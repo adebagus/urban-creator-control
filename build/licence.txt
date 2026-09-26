@@ -1,23 +1,24 @@
-Terms and Conditions
+Urban Creator CONTROL - License Notice
 
-By downloading and using this software you agree to the following terms and conditions: The following legal disclaimer governs your use of our machine control software that includes beta features. By using this software, you acknowledge and agree to the terms and conditions set forth in this disclaimer.
+Urban Creator CONTROL is free software. It is licensed under the GNU General Public License, version 3 (GPL-3.0). The full license text is in the file LICENSE that comes with this software, and at:
+https://github.com/adebagus/urban-creator-control/blob/master/LICENSE
 
-Beta Features:
-The machine control software may contain beta features that are still under development and testing. You acknowledge that such features may not be fully functional or may be subject to bugs, errors, or other issues. As such, the use of such features may result in unexpected and undesirable results.
+This gives you the right to run, study, share and modify the software under the terms of that license. The complete source code is available at:
+https://github.com/adebagus/urban-creator-control
 
-Limited Warranty:
-The machine control software is provided "as is," without warranty of any kind, either expressed or implied. We do not guarantee that the software will meet your requirements or that it will be error-free. You assume all risks and responsibility for any loss or damage that may arise from the use of the software, including any beta features.
+Origin and copyright:
+Urban Creator CONTROL is a fork of OpenBuilds CONTROL (https://github.com/OpenBuilds/OpenBuilds-CONTROL). Portions are copyright OpenBuilds and the other contributors to OpenBuilds CONTROL; the modifications are copyright Urban Creator. Urban Creator CONTROL is not affiliated with or endorsed by OpenBuilds.
 
-Limitation of Liability:
-In no event shall we be liable for any damages arising out of or in connection with the use or inability to use the software, including any beta features. This includes but is not limited to direct, indirect, incidental, special, or consequential damages, such as loss of profits, data, or use of the software.
+Beta and development features:
+Some features may still be under development or testing and may not work fully or may contain bugs. This is information about the state of the software; it does not limit any right you have under the GPL.
 
-Indemnification:
-You agree to indemnify, defend, and hold us harmless from any claims, damages, and expenses, including reasonable attorney's fees, arising out of your use of the software, including any beta features, except to the extent prohibited under applicable law.
+Safety:
+CNC machines are dangerous. Always keep the emergency stop within reach while a machine is running, and never leave a running machine unattended.
 
-No Support:
-We are not obliged to provide any technical support or assistance with the use of the software, including any beta features. Any support or assistance provided by us is entirely at our discretion.
+Disclaimer of warranty (GPL-3.0, section 15):
+THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW. EXCEPT WHEN OTHERWISE STATED IN WRITING THE COPYRIGHT HOLDERS AND/OR OTHER PARTIES PROVIDE THE PROGRAM "AS IS" WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. THE ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE PROGRAM IS WITH YOU. SHOULD THE PROGRAM PROVE DEFECTIVE, YOU ASSUME THE COST OF ALL NECESSARY SERVICING, REPAIR OR CORRECTION.
 
-Termination:
-We reserve the right to terminate your use of the software, including any beta features, at any time without prior notice.
+Limitation of liability (GPL-3.0, section 16):
+IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW OR AGREED TO IN WRITING WILL ANY COPYRIGHT HOLDER, OR ANY OTHER PARTY WHO MODIFIES AND/OR CONVEYS THE PROGRAM AS PERMITTED ABOVE, BE LIABLE TO YOU FOR DAMAGES, INCLUDING ANY GENERAL, SPECIAL, INCIDENTAL OR CONSEQUENTIAL DAMAGES ARISING OUT OF THE USE OR INABILITY TO USE THE PROGRAM (INCLUDING BUT NOT LIMITED TO LOSS OF DATA OR DATA BEING RENDERED INACCURATE OR LOSSES SUSTAINED BY YOU OR THIRD PARTIES OR A FAILURE OF THE PROGRAM TO OPERATE WITH ANY OTHER PROGRAMS), EVEN IF SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
 
-By using this machine control software or any software provided by Urban Creator and its affiliates, including any beta features, you agree to the terms and conditions set forth in this legal disclaimer. If you do not agree to these terms, you may not use any of the software provided by Urban Creator and its affiliates , including any beta features.
+If the disclaimer of warranty and limitation of liability above cannot be given local legal effect according to their terms, reviewing courts shall apply local law that most closely approximates an absolute waiver of all civil liability in connection with the program, unless a warranty or assumption of liability accompanies a copy of the program in return for a fee (GPL-3.0, section 17).
