@@ -637,6 +637,12 @@ function initSocket() {
     console.log(sysinfo)
     lastsysinfo = sysinfo;
 
+    // Guarded: only present when this is really an Electron build (see getSystemInfo() in index.js) -
+    // an error here must not stop the rest of this handler from updating mobo/cpu/gpu/memory/os/ip.
+    if (sysinfo.electron) {
+      $("#electronversionspecs").html("v" + sysinfo.electron.version + " (Chromium " + sysinfo.electron.chrome + ", Node " + sysinfo.electron.node + ")")
+    }
+
     var mobo = sysinfo.hardware.motherboard.manufacturer + " " + sysinfo.hardware.motherboard.model
     $("#mobospecs").html(mobo)
 

@@ -4792,6 +4792,14 @@ async function getSystemInfo() {
 
   // Prepare systemInformation JSON object
   systemInformation = {
+    // The Electron/Chromium/Node build this copy of the app is running on - handy for support
+    // requests and to confirm an upgrade actually took effect. Undefined (not sent) if this ever
+    // runs outside Electron (there is no such build to report).
+    electron: process.versions.electron ? {
+      version: process.versions.electron,
+      chrome: process.versions.chrome,
+      node: process.versions.node,
+    } : undefined,
     operatingSystem: {
       type: osType,
       platform: osPlatform,
