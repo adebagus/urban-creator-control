@@ -5,29 +5,58 @@
 // Metro.dialog.create() a user is likely to have open while also wanting to
 // quit.
 //
-// Root cause (confirmed by reading the code, not by guessing): the app's
-// custom HTML titlebar close/minimize/maximize buttons (app/index.html
-// #windowtitlebar) are a normal static-flow element with no z-index of its
-// own. Metro's dialog backdrop (.overlay, from app/lib/metro4/js/metro.js's
-// _overlay(), styled in app/lib/metro4/css/metro.css as position:fixed;
-// z-index:1040) therefore paints ON TOP of the titlebar whenever ANY
-// Metro.dialog.create() is open (Alarm, Error, or the new tool-change
-// wizard) - so a click on the titlebar's "X" lands on the overlay instead
-// and never reaches the titlebar's onclick, which is what emits
-// 'minimisetotray'. The quit CONFIRMATION itself (index.js's
+// Root cause, and why the FIRST attempt at fixing it did not work (both
+// confirmed live, by launching the real Electron app with
+// --remote-debugging-port and using the Chrome DevTools Protocol to open a
+// dialog and check document.elementFromPoint() at the titlebar's close (X)
+// button - not by re-reading the CSS and guessing harder):
+//
+//   The custom titlebar (app/index.html #windowtitlebar) sits inside the
+//   app's root wrapper, ".window.bd-uc-accent" (index.html line 33) - Metro's
+//   OWN generic ".window" class, reused here purely for its cosmetic
+//   flex/border/background styling. That class sets "position: relative;
+//   z-index: 1" (metro.css). A Metro.dialog.create() appends its backdrop
+//   (.overlay, position:fixed; z-index:1040) as a SEPARATE sibling of
+//   .window, directly under <body>.
+//
+//   The first fix attempt gave #windowtitlebar its own z-index (1900),
+//   reasoning that 1900 > 1040 should win. It did not: ANY positioned
+//   element with an explicit (non-auto) z-index establishes a NEW stacking
+//   context for all its descendants, and .window's "z-index: 1" already
+//   does exactly that. #windowtitlebar's z-index only ever competed against
+//   OTHER THINGS INSIDE .window - it could never reach up and compete
+//   against .overlay, which lives one level up, at the body level. Verified
+//   live: with a dialog open, elementFromPoint() at the "X" button's
+//   coordinates still returned the .overlay div, confirming the first fix
+//   changed a NUMBER that looked right without changing which STACKING
+//   CONTEXT it was compared within - which is the one test-writing lesson
+//   this file exists to not repeat: two z-index values being numerically
+//   correct is NOT sufficient to prove the actual paint/hit-test order
+//   unless there is also no differently-stacked ancestor in between. A pure
+//   "titlebarZ > overlayZ" test (kept below, second test) would have PASSED
+//   on the broken first fix - it is necessary but not sufficient by itself,
+//   which is exactly why the first test in this file asserts the actual
+//   escape mechanism (.window's z-index being forced back to auto), not
+//   just the numbers.
+//
+//   The real fix (app/css/main.css) has two parts: (1) ".window.bd-uc-accent
+//   { z-index: auto; }" - takes the root wrapper out of its own stacking
+//   context (a positioned element with z-index:auto still paints above
+//   plain static content exactly as before; it just stops trapping its
+//   descendants), so #windowtitlebar's z-index is finally compared directly
+//   against a dialog's .overlay at the same (body) level; (2) the titlebar
+//   keeps its own z-index above ordinary dialogs but below the startup
+//   splash (#splash, z-index 2000), which is meant to block absolutely
+//   everything, titlebar included. Re-verified live after this fix: the
+//   SAME elementFromPoint() check now returns the close button itself, and
+//   a real dispatched click on it does reach socket.emit('minimisetotray').
+//
+// Separately confirmed: the quit CONFIRMATION itself (index.js's
 // quitAndCleanup(), triggered by that socket event) is a NATIVE
 // dialog.showMessageBoxSync() - not a second Metro dialog, so this was never
 // a "two Metro dialogs stacked" z-index fight as first suspected; it never
 // even got that far, because the titlebar click that should have triggered
 // it was silently swallowed first.
-//
-// Fix: app/css/main.css gives #windowtitlebar position:relative + a z-index
-// above every ordinary Metro dialog (but still below the startup splash,
-// which is meant to block everything). These tests pin that ordering, and
-// separately confirm isMachineBusy() (the function quitAndCleanup() calls to
-// decide whether to show its own confirmation at all) correctly reports
-// "busy" while a tool-change wait is parked - so once the titlebar click
-// gets through, the existing confirmation dialog fires as designed.
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -57,7 +86,24 @@ function zIndexOf(rule) {
 // The fix: the titlebar now outranks ordinary Metro dialogs
 // --------------------------------------------------------------------------
 
-test('the custom titlebar (#windowtitlebar) has a HIGHER z-index than a Metro dialog overlay, so its buttons stay clickable while one is open', () => {
+test('the escape mechanism itself: the app root wrapper (.window.bd-uc-accent) has its z-index forced back to auto, so it no longer traps its descendants in their own stacking context', () => {
+  // This is the part a pure z-index NUMBER comparison (the next test) cannot
+  // prove by itself - see the file header. Metro's generic ".window" sets
+  // "z-index: 1" (metro.css, loaded via metro-all.min.css in
+  // app/index.html); our override must say "auto", not merely a bigger
+  // number (a bigger number is still an explicit z-index, so it would still
+  // trap descendants the same way). It wins the cascade on SPECIFICITY, not
+  // load order: ".window.bd-uc-accent" (two classes) outranks Metro's plain
+  // ".window" (one class) regardless of which stylesheet loads first.
+  const rule = cssRule(MAIN_CSS, '.window.bd-uc-accent');
+  assert.match(rule, /z-index:\s*auto\s*;/, 'must be literally "auto", not just a larger explicit number');
+});
+
+test('structure: app/index.html actually loads metro-all.min.css (the file the .window z-index:1 rule really comes from in production, not the unminified metro.css this test reads for readability)', () => {
+  assert.match(INDEX_HTML, /<link rel="stylesheet" href="lib\/metro4\/css\/metro-all\.min\.css" \/>/);
+});
+
+test('the custom titlebar (#windowtitlebar) has a HIGHER z-index than a Metro dialog overlay - necessary, but (see above) not by itself sufficient', () => {
   const titlebarRule = cssRule(MAIN_CSS, '#windowtitlebar');
   assert.match(titlebarRule, /position:\s*relative/, 'z-index has no effect on a static (non-positioned) element');
   const titlebarZ = zIndexOf(titlebarRule);
@@ -69,6 +115,11 @@ test('the titlebar still stays BELOW the startup splash - that one is meant to b
   const titlebarZ = zIndexOf(cssRule(MAIN_CSS, '#windowtitlebar'));
   const splashZ = zIndexOf(cssRule(SPLASH_CSS, '#splash'));
   assert.ok(titlebarZ < splashZ, 'titlebar (' + titlebarZ + ') must stay under #splash (' + splashZ + ')');
+});
+
+test('structure: ".window" (Metro\'s generic class) is used exactly once in the app, as our own root wrapper - so overriding it here has no blast radius elsewhere', () => {
+  const uses = (INDEX_HTML.match(/class="[^"]*\bwindow\b(?!-)[^"]*"/g) || []);
+  assert.equal(uses.length, 1, 'expected exactly one element with the bare "window" class: ' + JSON.stringify(uses));
 });
 
 test('structure: the titlebar in app/index.html is the same element this CSS rule targets', () => {
