@@ -2508,6 +2508,16 @@ io.on("connection", function(socket) {
     unpause();
   });
 
+  // P10: the ONLY thing that may clear awaitingToolChange - see pause()'s
+  // guard, which refuses to touch it, and send1Q()'s gate, which the manual
+  // Resume above cannot get past on its own (see Commit 2/4's tests).
+  socket.on('resumeToolChange', function() {
+    if (!status.comms.awaitingToolChange) return; // stray/duplicate click
+    status.comms.awaitingToolChange = false;
+    pendingToolChange = null;
+    send1Q();
+  });
+
   socket.on('stop', function(data) {
     stop(data);
   });
@@ -2551,6 +2561,13 @@ io.on("connection", function(socket) {
           // a jobComplete with them.
           jobStartTime = false;
           jobCompletedMsg = "";
+          // P10: same reasoning - a tool-change wait belongs to a queue that
+          // no longer exists after this dump (see
+          // test/reconnect-stale-state.test.js's structural check).
+          status.comms.awaitingToolChange = false;
+          pendingToolChange = null;
+          toolChangeWizardEmitted = false;
+          toolChangeQIndexes.clear();
           debug_log('Clearing Lockout');
           switch (status.machine.firmware.type) {
             case 'grbl':
@@ -2852,6 +2869,12 @@ function stopPort() {
   queuePointer = 0;
   jobStartTime = false;
   jobCompletedMsg = "";
+  // P10: same reasoning - a tool-change wait belongs to a queue that no
+  // longer exists after this dump.
+  status.comms.awaitingToolChange = false;
+  pendingToolChange = null;
+  toolChangeWizardEmitted = false;
+  toolChangeQIndexes.clear();
 
   if (typeof port === 'undefined' || !port) {
     return; // never connected - nothing to close
@@ -3733,6 +3756,14 @@ function send1Q() {
       status.comms.connectionStatus = 2; // finished
       jobCompletedMsg = ""
       jobStartTime = false;
+      // P10: awaitingToolChange is already false here (see the guard a few
+      // lines up) - reset alongside the rest anyway, uniformly with every
+      // other place that dumps the queue, and to clear any map left over
+      // from a tool change earlier in this same job.
+      status.comms.awaitingToolChange = false;
+      pendingToolChange = null;
+      toolChangeWizardEmitted = false;
+      toolChangeQIndexes.clear();
     }
   } else {
     debug_log('Not Connected')
@@ -4214,12 +4245,28 @@ function stop(data) {
     status.comms.paused = false;
     status.comms.runStatus = 'Stopped';
     status.comms.alarm = "";
+    // P10: same reasoning - a tool-change wait belongs to a queue that no
+    // longer exists after this dump.
+    status.comms.awaitingToolChange = false;
+    pendingToolChange = null;
+    toolChangeWizardEmitted = false;
+    toolChangeQIndexes.clear();
   } else {
     debug_log('ERROR: Machine connection not open!');
   }
 }
 
 function pause() {
+  // P10: the queue is already halted at an M6, waiting on the wizard - the
+  // controller is confirmed idle by the time this can even be true (see
+  // Commit 3), so a manual Pause here would hold nothing that is moving. More
+  // importantly: only resumeToolChange may clear awaitingToolChange, so
+  // pausing "on top of" it here would do nothing useful and could confuse
+  // the two flags in the UI - refuse it outright instead of half-doing it.
+  if (status.comms.awaitingToolChange) {
+    debug_log('PAUSE ignored: tool-change wizard is active');
+    return;
+  }
   if (status.comms.connectionStatus == 3) {
     status.comms.paused = true;
     debug_log('PAUSE');
