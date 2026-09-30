@@ -3197,6 +3197,14 @@ function parseFeedback(data) {
   // when the recovery record is cleared.
   if (state == "Idle") {
     jobRecovery.onIdle(sentBuffer.length === 0);
+    // P10: the controller reports "Idle" repeatedly once it truly is idle -
+    // reuse that (and the same sentBuffer.length===0 signal jobRecovery.onIdle
+    // just used above) instead of a separate poller, but latch it so the
+    // wizard is only ever told to show ONCE per M6, not on every status tick.
+    if (status.comms.awaitingToolChange && !toolChangeWizardEmitted && sentBuffer.length === 0) {
+      toolChangeWizardEmitted = true;
+      io.sockets.emit('toolChangeWizard', pendingToolChange);
+    }
   }
   if (state == "Alarm") {
     // debug_log("ALARM:  " + data)
