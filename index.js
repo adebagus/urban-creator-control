@@ -585,6 +585,12 @@ const iconAlarm = path.join(__dirname, 'app/icon-bell.png');
 var iosocket;
 var lastCommand = false
 var gcodeQueue = [];
+// P10: queue index -> { line, tool } for every M6 (tool change) line in the
+// CURRENT job, built by runJob() below. Populated only for tracked jobs
+// (trackRecovery) - a probing routine or console command with a stray M6 in
+// it is not intercepted. Cleared at every point that dumps gcodeQueue (see
+// test/reconnect-stale-state.test.js's structural check).
+var toolChangeQIndexes = new Map();
 var queuePointer = 0;
 var statusLoop;
 var frontEndUpdateLoop, sysinfoUpdateLoop
@@ -2667,6 +2673,23 @@ function machineSend(gcode, realtime) {
   }
 }
 
+// P10: does this (already comment-stripped-by-";") source line contain a tool
+// change command? Matches M6, M06, M006 - NOT M60/M600/M16 etc (negative
+// lookahead on a following digit). Bracket comments "(...)" are stripped here
+// too (the caller does not strip them - grbl's own parser ignores them, so
+// nothing upstream needs to), so "(switch to M6 next)" is not mistaken for one.
+function isToolChangeLine(line) {
+  var stripped = String(line).replace(/\([^)]*\)/g, '');
+  return /M0*6(?!\d)/i.test(stripped);
+}
+
+// The tool number on a tool-change line, e.g. "T2 M6" -> "2". null if none.
+function toolChangeToolNumber(line) {
+  var stripped = String(line).replace(/\([^)]*\)/g, '');
+  var m = stripped.match(/T(-?[\d.]+)/i);
+  return m ? m[1] : null;
+}
+
 function runJob(object) {
 
   // object = {
@@ -2698,6 +2721,12 @@ function runJob(object) {
       // bounding-box moves or console commands (isJob:false).
       var trackRecovery = (object.isJob === true);
       var recoveryMarks = [];
+      // P10: leftover marks from whatever job last populated this belong to a
+      // queue that is long gone by the time a new runJob() legitimately starts
+      // (every place that dumps gcodeQueue clears this too - see
+      // test/reconnect-stale-state.test.js) - cleared again here regardless,
+      // since a non-tracked run (trackRecovery false) never repopulates it.
+      toolChangeQIndexes.clear();
       for (var i = 0; i < data.length; i++) {
 
         var line = data[i].replace("%", "").split(';'); // Remove everything after ; = comment
@@ -2714,6 +2743,14 @@ function runJob(object) {
               q: gcodeQueue.length,
               line: i + 1
             });
+            // P10: only tracked jobs get tool-change interception - a probing
+            // routine or console command with a stray M6 in it is not one.
+            if (isToolChangeLine(tosend)) {
+              toolChangeQIndexes.set(gcodeQueue.length, {
+                line: i + 1,
+                tool: toolChangeToolNumber(tosend)
+              });
+            }
           }
           addQToEnd(tosend);
         }

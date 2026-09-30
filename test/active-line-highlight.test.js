@@ -36,7 +36,7 @@ function harness() {
   const counts = []; // [the queue entry just sent (machineSend emits BEFORE it writes), queueCount data]
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uc-hl-'));
   const ctx = {
-    gcodeQueue: [], queuePointer: 0, sentBuffer: [], queueCounter: null,
+    gcodeQueue: [], queuePointer: 0, sentBuffer: [], queueCounter: null, toolChangeQIndexes: new Map(),
     status: {
       comms: { connectionStatus: 2, blocked: false, paused: false, runStatus: 'Idle', queue: 0, alarm: '', interfaces: { type: 'usb' } },
       machine: { modals: {}, firmware: { type: 'grbl', platform: 'grbl', rxBufferSize: 254, blockBufferSize: '35', version: '', date: '', buffer: '' }, tool: { nexttool: {} } },
@@ -52,7 +52,7 @@ function harness() {
     getPlannerBlocks: () => 35,
   });
   vm.createContext(ctx);
-  vm.runInContext(MODAL_VARS + ['addQToEnd', 'send1Q', 'BufferSpace', 'machineSend', 'runJob'].map(grabFunction).join('\n'), ctx);
+  vm.runInContext(MODAL_VARS + ['isToolChangeLine', 'toolChangeToolNumber', 'addQToEnd', 'send1Q', 'BufferSpace', 'machineSend', 'runJob'].map(grabFunction).join('\n'), ctx);
   return {
     ctx, sent, counts,
     // run a whole job to the end, answering "ok" for every line
