@@ -339,6 +339,69 @@ yang dikirim klien (`$$`) tidak pernah sampai ke controller, dan log palsu
 
 ---
 
+## P10 — Tool-Change Wizard (Tahap 1a — mode Pause)
+
+Saat job streaming menemukan baris M6 (tool change), antrean berhenti tepat di
+situ — baris M6 **TIDAK PERNAH dikirim ke controller** (jadi jalan di firmware
+GRBL/grblHAL standar apa pun, tidak butuh fitur manual-toolchange `$341`).
+Setelah controller benar-benar Idle (bukan langsung saat M6 tercapai — masih
+menyelesaikan gerakan sebelumnya dulu), dialog "Tool Change" muncul dengan satu
+tombol Continue. **Tahap 1a baru mode Pause saja** — belum ada langkah
+jog/probe otomatis di dalam dialognya (itu rencana Tahap 1b: Ignore + Standard
+Re-zero). Data recovery tetap di `job-recovery.json` seperti P9 di atas — tidak
+ada field/skema baru untuk fitur ini.
+
+- [ ] **Job normal dengan M6 di tengah**: jalankan, tunggu dialog Tool Change
+      muncul (bukan seketika M6 tercapai — beri jeda sampai mesin benar-benar
+      berhenti bergerak dulu), klik Continue. **Harapan**: job lanjut dari
+      baris setelah M6 dengan modal (G54/G90/unit/dll.) tetap benar, tidak ada
+      gerakan aneh atau lompatan posisi.
+- [ ] **Tutup aplikasi (atau kill proses) PERSIS saat dialog tampil**, buka
+      lagi. **Harapan**: "Recover Job" menawarkan `resumeLine` = baris M6 itu
+      sendiri (bukan sebelum/sesudahnya), dan memilih recover dari baris itu
+      memicu ulang dialog Tool Change yang sama dengan wajar.
+- [ ] **Cabut USB PERSIS saat dialog tampil**: sama seperti di atas, ditambah
+      pastikan reconnect ke port yang sama tidak meninggalkan state nyangkut
+      (tombol Pause otomatis enabled lagi setelah reconnect, bukan tetap
+      abu-abu selamanya).
+- [ ] **Coba tekan tombol Pause manual SAAT dialog tampil**: tombolnya harus
+      terlihat disabled (abu-abu) di UI. **Cepat cek**: kalau entah bagaimana
+      masih bisa diklik, server tidak boleh mengirim apa pun ke controller
+      (lihat serial log) — `pause()` menolak selama menunggu tool change.
+- [ ] **M6 sebagai baris PALING TERAKHIR di file**: pastikan dialog Tool
+      Change tetap muncul, BUKAN malah dianggap "Job Complete".
+- [ ] **Dua (atau lebih) M6 dalam satu job**: dialog harus muncul lagi dengan
+      benar untuk tool change kedua, tidak nyangkut setelah yang pertama
+      selesai diklik Continue.
+- [ ] **Job TANPA M6 sama sekali**: pastikan tidak ada regresi ke perilaku
+      streaming biasa — job jalan normal dari awal sampai selesai, tombol
+      Pause/Resume manual tetap bekerja seperti sebelum fitur ini ada.
+- [ ] **Pause/Resume manual biasa** (job tanpa tool change sama sekali)
+      sebelum & sesudah kerja ini: pastikan tidak ada regresi ke fitur yang
+      sudah ada.
+- [ ] **Clear Alarm (method 2) dipicu SAAT dialog tampil** (mis. limit switch
+      kesenggol saat user menjog mesin untuk mengganti tool): alarm ter-clear
+      normal DAN state tool-change ikut bersih (dialog tidak nyangkut,
+      Pause/tombol lain kembali normal).
+      **Cepat cek**: `npm test` → `test/toolchange-state-reset.test.js`
+      (otomatis, cek logikanya; test manual ini yang konfirmasi UI/hardware
+      beneran begitu).
+- [ ] **Reload halaman/renderer (F5, atau semacamnya) SAAT dialog tampil** —
+      lihat **known limitation** di bawah sebelum menganggap ini bug.
+
+**Known limitation (BUKAN action item — sudah diketahui dan sengaja ditunda ke
+Tahap 1b):** kalau renderer di-reload persis saat dialog Tool Change sedang
+tampil, dialognya **hilang dari layar dan tidak muncul otomatis lagi** — event
+`toolChangeWizard` dari server sekali-tembak (`toolChangeWizardEmitted`), jadi
+tidak dikirim ulang hanya karena halaman dimuat ulang. **Job TIDAK rusak**:
+server tetap menahan di `awaitingToolChange=true` dengan aman (tombol Pause
+tetap disabled, tidak ada baris yang salah kirim ke controller). Jalan
+keluarnya: **Stop → Recover Job** seperti skenario "tutup aplikasi"/"cabut USB"
+di atas. Kalau ini terjadi saat validasi, itu perilaku yang SUDAH DIKETAHUI,
+bukan temuan baru untuk dilaporkan sebagai bug.
+
+---
+
 ## Ringkasan: Area Paling Berisiko (prioritaskan waktu review di sini)
 
 1. **🔴 Laser profile homing behavior ($44/$45)** — ini SATU-SATUNYA test di
