@@ -649,3 +649,17 @@ select {
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* P10: the custom HTML titlebar (app/index.html #windowtitlebar) is a normal
+   static-flow element with no z-index of its own, so any Metro.dialog.create()
+   (its .overlay is position:fixed; z-index:1040) painted on top of it swallows
+   clicks on the window/minimize/maximize/close buttons - found when the
+   tool-change wizard's dialog made the titlebar's close (X) button completely
+   unresponsive while it was open. This is not specific to that one dialog: it
+   affects every Metro dialog in the app (Alarm, Error, ...), so the fix is
+   general - keep the titlebar above ordinary dialogs, but still below the
+   startup splash (#splash, z-index 2000) which is meant to block everything. */
+#windowtitlebar {
+  position: relative;
+  z-index: 1900;
+}
