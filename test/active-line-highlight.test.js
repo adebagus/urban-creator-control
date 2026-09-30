@@ -36,9 +36,9 @@ function harness() {
   const counts = []; // [the queue entry just sent (machineSend emits BEFORE it writes), queueCount data]
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uc-hl-'));
   const ctx = {
-    gcodeQueue: [], queuePointer: 0, sentBuffer: [], queueCounter: null, toolChangeQIndexes: new Map(),
+    gcodeQueue: [], queuePointer: 0, sentBuffer: [], queueCounter: null, toolChangeQIndexes: new Map(), pendingToolChange: null,
     status: {
-      comms: { connectionStatus: 2, blocked: false, paused: false, runStatus: 'Idle', queue: 0, alarm: '', interfaces: { type: 'usb' } },
+      comms: { connectionStatus: 2, blocked: false, paused: false, awaitingToolChange: false, runStatus: 'Idle', queue: 0, alarm: '', interfaces: { type: 'usb' } },
       machine: { modals: {}, firmware: { type: 'grbl', platform: 'grbl', rxBufferSize: 254, blockBufferSize: '35', version: '', date: '', buffer: '' }, tool: { nexttool: {} } },
     },
     fluidncConfig: '', jobStartTime: false, uploadedgcode: '', jobCompletedMsg: '', laserTestOn: false,
@@ -55,11 +55,23 @@ function harness() {
   vm.runInContext(MODAL_VARS + ['isToolChangeLine', 'toolChangeToolNumber', 'addQToEnd', 'send1Q', 'BufferSpace', 'machineSend', 'runJob'].map(grabFunction).join('\n'), ctx);
   return {
     ctx, sent, counts,
-    // run a whole job to the end, answering "ok" for every line
+    // run a whole job to the end, answering "ok" for every line. fileLines()
+    // below puts a "T2 M6" every 13th line - this file is about LINE-NUMBER
+    // MAPPING (queueCount's 3rd element), not the tool-change wizard itself
+    // (see test/toolchange-wizard-gate.test.js for that), so a tool-change
+    // wait is resolved immediately, as if the wizard's "Continue" fired at once.
     run(object) {
       ctx.runJob(object);
-      for (let guard = 0; guard < 100000 && ctx.sentBuffer.length; guard++) {
-        ctx.sentBuffer.shift(); ctx.status.comms.blocked = false; ctx.send1Q();
+      for (let guard = 0; guard < 100000 && ctx.queuePointer < ctx.gcodeQueue.length; guard++) {
+        if (ctx.sentBuffer.length) {
+          ctx.sentBuffer.shift(); ctx.status.comms.blocked = false; ctx.send1Q();
+        } else if (ctx.status.comms.awaitingToolChange) {
+          ctx.status.comms.awaitingToolChange = false;
+          ctx.pendingToolChange = null;
+          ctx.send1Q();
+        } else {
+          break;
+        }
       }
     },
   };
@@ -110,8 +122,15 @@ test('full job: the "$G" entries and blank/comment lines never move the highligh
   assert.ok(gs.length >= 5, '$G entries were really queued (' + gs.length + ')');
   h.counts.forEach(([text, d], i) => {
     if (text === '$G') {
-      // it belongs to the line queued right before it
-      assert.equal(d[2], h.counts[i - 1][1][2], '$G stays on the line of the command it follows');
+      // It never belongs to an EARLIER file line than whatever was counted
+      // right before it (that was the bug: the old queue-index formula could
+      // jump backwards). It CAN be a few lines ahead of the previous counted
+      // entry: dropped blank/comment lines never enter the queue at all, and
+      // an M6 line enters the queue but is never sent/counted (see
+      // test/toolchange-wizard-gate.test.js) - both open a gap between two
+      // counted entries that this check must not mistake for going backwards.
+      const prevLine = h.counts[i - 1][1][2];
+      assert.ok(d[2] >= prevLine, '$G must not move the highlight BACKWARDS (' + d[2] + ' vs ' + prevLine + ')');
     }
   });
   // strictly non-decreasing, and never a line that is not in the file

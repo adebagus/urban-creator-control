@@ -591,6 +591,14 @@ var gcodeQueue = [];
 // it is not intercepted. Cleared at every point that dumps gcodeQueue (see
 // test/reconnect-stale-state.test.js's structural check).
 var toolChangeQIndexes = new Map();
+// The { line, tool } entry send1Q() is currently waiting on (null when
+// status.comms.awaitingToolChange is false) - copied out of toolChangeQIndexes
+// at the moment the M6 entry is skipped, so nothing needs to re-derive it by
+// queue index later. Cleared at the same points as toolChangeQIndexes.
+var pendingToolChange = null;
+// One-shot latch: the controller reports "Idle" repeatedly once it truly is
+// idle, but the "show the wizard now" event must fire only once per M6.
+var toolChangeWizardEmitted = false;
 var queuePointer = 0;
 var statusLoop;
 var frontEndUpdateLoop, sysinfoUpdateLoop
@@ -706,6 +714,10 @@ var status = {
     queue: 0,
     blocked: false,
     paused: false,
+    // P10: a tool-change (M6) line was reached and skipped - separate from
+    // "paused" on purpose (see pause()'s guard below): only the wizard's own
+    // "Continue" (the "resumeToolChange" socket handler) may clear this one.
+    awaitingToolChange: false,
     controllerBuffer: 0, // Seems like you are tracking available buffer?  Maybe nice to have in frontend?
     interfaces: {
       type: "",
@@ -3642,23 +3654,42 @@ function send1Q() {
   if (status.comms.connectionStatus > 0) {
     switch (status.machine.firmware.type) {
       case 'grbl':
-        if ((gcodeQueue.length - queuePointer) > 0 && !status.comms.blocked && !status.comms.paused) {
-          spaceLeft = BufferSpace('grbl');
-
-          // Do we have enough space in the buffer?
-          if (gcodeQueue[queuePointer].length < spaceLeft) {
-            gcode = gcodeQueue[queuePointer];
+        if ((gcodeQueue.length - queuePointer) > 0 && !status.comms.blocked && !status.comms.paused && !status.comms.awaitingToolChange) {
+          if (toolChangeQIndexes.has(queuePointer)) {
+            // P10: an M6 line - never sent to the controller (grbl/grblHAL
+            // without $341 does not support it), so it needs no buffer space
+            // and no "ok" is ever coming back for it. queuePointer is
+            // advanced (this queue entry IS done with, as far as the queue is
+            // concerned) but nothing is pushed to sentBuffer - that keeps
+            // getFirstUnackedQ() (queuePointer - sentBuffer.length, see
+            // jobRecovery.js) correct with zero changes there: once the
+            // REST of sentBuffer drains, it naturally lands on the line right
+            // after this M6, which is exactly the correct resume point.
+            pendingToolChange = toolChangeQIndexes.get(queuePointer);
             queuePointer++;
-            sentBuffer.push(gcode);
-            machineSend(gcode + '\n', false);
-            // debug_log('Sent: ' + gcode + ' Q: ' + (gcodeQueue.length - queuePointer) + ' Bspace: ' + (spaceLeft - gcode.length - 1));
+            status.comms.awaitingToolChange = true;
+            toolChangeWizardEmitted = false;
           } else {
-            status.comms.blocked = true;
+            spaceLeft = BufferSpace('grbl');
+
+            // Do we have enough space in the buffer?
+            if (gcodeQueue[queuePointer].length < spaceLeft) {
+              gcode = gcodeQueue[queuePointer];
+              queuePointer++;
+              sentBuffer.push(gcode);
+              machineSend(gcode + '\n', false);
+              // debug_log('Sent: ' + gcode + ' Q: ' + (gcodeQueue.length - queuePointer) + ' Bspace: ' + (spaceLeft - gcode.length - 1));
+            } else {
+              status.comms.blocked = true;
+            }
           }
         }
         break;
     }
-    if (queuePointer >= gcodeQueue.length) {
+    // P10: awaitingToolChange excluded - an M6 as the LAST queue entry must
+    // still show the wizard, not be treated as "job complete" just because
+    // queuePointer caught up to gcodeQueue.length by skipping over it.
+    if (queuePointer >= gcodeQueue.length && !status.comms.awaitingToolChange) {
       // P9: every line has been SENT - not executed. The controller still
       // holds the tail in its RX buffer and planner, so keep the recovery
       // record (state "completing") until it reports Idle with everything
