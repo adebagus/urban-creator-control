@@ -502,6 +502,31 @@ function initSocket() {
     }
   });
 
+  // P10: the server confirmed the controller is genuinely idle at an M6 (see
+  // index.js's parseFeedback()) and is waiting for "Lanjutkan" - Tahap 1a is
+  // mode Pause only, so this is a plain notice, not a jog/probe wizard yet.
+  // Same as recoveryOffer: not shown on the LAN Jog-from-Phone page.
+  socket.on('toolChangeWizard', function(info) {
+    if (isJogWidget) return;
+    var toolText = (info && info.tool) ? ('T' + info.tool) : 'the next tool';
+    var lineText = (info && info.line) ? (' (line ' + info.line + ')') : '';
+    var dialog = Metro.dialog.create({
+      clsDialog: 'dark',
+      title: "<i class='fas fa-tools'></i> Tool Change",
+      content: "The job has paused for a tool change" + lineText + ". Change to " + toolText + ", then click Continue.",
+      actions: [{
+        caption: "Continue",
+        cls: "js-dialog-close alert continueToolChangeBtn",
+        onclick: function() {
+          socket.emit('resumeToolChange');
+        }
+      }]
+    });
+    setTimeout(function() {
+      $(".continueToolChangeBtn").focus();
+    }, 200);
+  });
+
   socket.on('toastErrorAlarm', function(data) {
     console.log(data)
     var icon = ''

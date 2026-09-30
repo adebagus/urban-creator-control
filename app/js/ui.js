@@ -233,7 +233,10 @@ function setControlBar(val, status) {
     }
     $('#chkSize').show().attr('disabled', true);
     $('#resumeBtn').hide().attr('disabled', true);
-    $('#pauseBtn').show().attr('disabled', false);
+    // P10: while the tool-change wizard is waiting, the controller is already
+    // confirmed idle (nothing is moving) and pause() itself refuses to act -
+    // disable the button so it does not look like it should do something.
+    $('#pauseBtn').show().attr('disabled', !!(status.comms && status.comms.awaitingToolChange));
     $('#stopBtn').show().attr('disabled', false);
     $('#toolBtn').show().attr('disabled', false);
     $('#toolBtn2').show().attr('disabled', false);
