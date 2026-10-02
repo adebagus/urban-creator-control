@@ -527,6 +527,62 @@ function initSocket() {
     }, 200);
   });
 
+  // P10 Tahap 1b-ii Commit 6: the Fixed Tool Sensor's own tool-change dialog -
+  // a SEPARATE event from 'toolChangeWizard' above (see index.js's Commit 4),
+  // not a variant of it, so a client that only knows the old event never
+  // renders the wrong one for this mode. Deliberately looks and behaves
+  // differently from the plain "Continue" dialog: its action does not carry
+  // "js-dialog-close" (the dialog must stay open to show progress), emits
+  // 'startToolSensorProbe' (never 'resumeToolChange' - see index.js's own
+  // guard refusing that event outright in this mode), and its wording makes
+  // clear the click below triggers AUTOMATIC machine motion (G53 travel +
+  // G38.2 probe), not a wait for the user to finish something by hand.
+  socket.on('toolChangeProbeReady', function(info) {
+    if (isJogWidget) return;
+    var toolText = (info && info.tool) ? ('T' + info.tool) : 'the next tool';
+    var lineText = (info && info.line) ? (' (line ' + info.line + ')') : '';
+
+    function onToolSensorData(data) {
+      if (!data || data.command !== '[ TOOL SENSOR ]') return;
+      if (data.type === 'error') {
+        $('#toolSensorProbeStatus').html('<i class="fas fa-exclamation-triangle fg-darkRed"></i> ' + escapeHTML(data.response));
+        $('.toolSensorProbeBtn').prop('disabled', false).html('Coba Lagi / Retry');
+      } else if (data.type === 'success') {
+        $('#toolSensorProbeStatus').html('<i class="fas fa-check-circle fg-darkGreen"></i> ' + escapeHTML(data.response));
+        $('.toolSensorProbeBtn').remove(); // nothing left to click - the job resumes on its own
+        socket.off('data', onToolSensorData);
+        setTimeout(function() {
+          Metro.dialog.close(dialog);
+        }, 1500);
+      }
+    }
+    socket.on('data', onToolSensorData);
+
+    var dialog = Metro.dialog.create({
+      clsDialog: 'dark',
+      title: "<i class='fas fa-bullseye'></i> Fixed Tool Sensor",
+      content:
+        "<div>The job has paused for a tool change" + lineText + ". Change to " + toolText + ".</div>" +
+        "<div class='fg-orange mt-2'><i class='fas fa-exclamation-triangle'></i> Clicking below moves the machine AUTOMATICALLY to the tool sensor and probes - stand clear, keep a hand near Stop.</div>" +
+        "<div id='toolSensorProbeStatus' class='mt-2'></div>",
+      actions: [{
+        caption: "Probe & Continue",
+        cls: "alert toolSensorProbeBtn", // NOT js-dialog-close - stays open to show probing progress
+        onclick: function() {
+          $('.toolSensorProbeBtn').prop('disabled', true);
+          $('#toolSensorProbeStatus').html('<i class="fas fa-spinner fa-spin"></i> Probing...');
+          socket.emit('startToolSensorProbe');
+        }
+      }],
+      onClose: function() {
+        socket.off('data', onToolSensorData);
+      }
+    });
+    setTimeout(function() {
+      $(".toolSensorProbeBtn").focus();
+    }, 200);
+  });
+
   socket.on('toastErrorAlarm', function(data) {
     console.log(data)
     var icon = ''
