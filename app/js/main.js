@@ -261,6 +261,11 @@ function runJobFile() {
     // separately - the server records it for "Recover Job". Appended before
     // the file so it is available however multer orders its parsing.
     formData.append("fileName", loadedFileName || "");
+    // P10 Tahap 1b-i: the client's chosen M6 handling for THIS run - see
+    // app/js/toolchange.js. The server validates it independently (an
+    // unrecognised/missing value is always treated as "pause", the safe
+    // default), so this is never trusted blindly.
+    formData.append("toolChangeMode", toolChangeMode);
     formData.append("file", fileOfBlob);
     var xhr = new XMLHttpRequest();
     xhr.onload = function() {
@@ -287,6 +292,7 @@ function runJobFile() {
 
     var fileOfBlob = new File([blob], 'upload.gcode');
     formData.append("fileName", loadedFileName || "");
+    formData.append("toolChangeMode", toolChangeMode); // see Tahap 1b-i comment above
     formData.append("file", fileOfBlob);
     var xhr = new XMLHttpRequest();
     xhr.onload = function() {

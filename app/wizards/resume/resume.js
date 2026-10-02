@@ -726,6 +726,9 @@ function recoverySendJob(payload, startLine, fileName) {
   var fileOfBlob = new File([blob], 'upload.gcode');
   formData.append("fileName", fileName || "");
   formData.append("lineOffset", String(payload.lineOffset));
+  // P10 Tahap 1b-i: same field as the Run button (app/js/main.js) - the
+  // server validates it independently either way.
+  formData.append("toolChangeMode", toolChangeMode);
   formData.append("file", fileOfBlob);
   var xhr = new XMLHttpRequest();
   xhr.open('POST', '/runjob', true);

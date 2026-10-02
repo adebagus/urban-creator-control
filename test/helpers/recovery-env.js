@@ -89,6 +89,8 @@ function makeEnv(opts = {}) {
     },
     webgl: opts.webgl === undefined ? true : opts.webgl,
     gcode: opts.gcode === undefined ? false : opts.gcode,
+    // P10 Tahap 1b-i: the global app/js/toolchange.js sets this; recoverySendJob() reads it directly.
+    toolChangeMode: opts.toolChangeMode === undefined ? 'pause' : opts.toolChangeMode,
     lastJobStartTime: 0,
     get loadedFileName() { return env.loadedName; }, set loadedFileName(v) { env.loadedName = v; },
     laststatus: { comms: { connectionStatus: opts.status === undefined ? 1 : opts.status }, machine: { modals: { homedRecently: true } } },
@@ -129,7 +131,7 @@ function makeEnv(opts = {}) {
     FormData: class { constructor() { this.f = {}; } append(k, v) { this.f[k] = v; } },
     Blob: class { constructor(parts) { this.text = parts.join(''); } },
     File: class { constructor(parts) { this.blob = parts[0]; } },
-    XMLHttpRequest: class { open(method, url) { this.m = method; this.u = url; } send(fd) { env.posted.push({ method: this.m, url: this.u, fileName: fd.f.fileName, lineOffset: fd.f.lineOffset, body: fd.f.file.blob.text }); } },
+    XMLHttpRequest: class { open(method, url) { this.m = method; this.u = url; } send(fd) { env.posted.push({ method: this.m, url: this.u, fileName: fd.f.fileName, lineOffset: fd.f.lineOffset, toolChangeMode: fd.f.toolChangeMode, body: fd.f.file.blob.text }); } },
   };
   vm.createContext(ctx);
   for (const decl of VARS) {
