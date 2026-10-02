@@ -266,6 +266,7 @@ function runJobFile() {
     // unrecognised/missing value is always treated as "pause", the safe
     // default), so this is never trusted blindly.
     formData.append("toolChangeMode", toolChangeMode);
+    appendToolSensorFields(formData); // Tahap 1b-ii Commit 2 - see app/js/toolchange.js
     formData.append("file", fileOfBlob);
     var xhr = new XMLHttpRequest();
     xhr.onload = function() {
@@ -293,6 +294,7 @@ function runJobFile() {
     var fileOfBlob = new File([blob], 'upload.gcode');
     formData.append("fileName", loadedFileName || "");
     formData.append("toolChangeMode", toolChangeMode); // see Tahap 1b-i comment above
+    appendToolSensorFields(formData); // Tahap 1b-ii Commit 2
     formData.append("file", fileOfBlob);
     var xhr = new XMLHttpRequest();
     xhr.onload = function() {

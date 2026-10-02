@@ -91,6 +91,14 @@ function makeEnv(opts = {}) {
     gcode: opts.gcode === undefined ? false : opts.gcode,
     // P10 Tahap 1b-i: the global app/js/toolchange.js sets this; recoverySendJob() reads it directly.
     toolChangeMode: opts.toolChangeMode === undefined ? 'pause' : opts.toolChangeMode,
+    // P10 Tahap 1b-ii Commit 2: recoverySendJob() calls this (the real one
+    // lives in app/js/toolchange.js, not resume.js) - a stub matching its
+    // FormData-field contract is enough here; what it actually does with
+    // localStorage is covered by test/toolsensor-settings-ui.test.js.
+    appendToolSensorFields: opts.appendToolSensorFields || ((fd) => {
+      fd.append('toolSensorX', ''); fd.append('toolSensorY', ''); fd.append('toolSensorZ', '');
+      fd.append('toolSensorFirstBehaviour', 'always-wizard');
+    }),
     lastJobStartTime: 0,
     get loadedFileName() { return env.loadedName; }, set loadedFileName(v) { env.loadedName = v; },
     laststatus: { comms: { connectionStatus: opts.status === undefined ? 1 : opts.status }, machine: { modals: { homedRecently: true } } },

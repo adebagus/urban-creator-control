@@ -152,6 +152,24 @@ function showToolSensorSettings() {
   });
 }
 
+// Tahap 1b-ii Commit 2: appends the Fixed Tool Sensor fields to a /runjob
+// FormData, same way for all three callers (app/js/main.js's two branches,
+// app/wizards/resume/resume.js) - a shared helper instead of repeating this
+// at each call site, same append-field-by-field style as fileName/
+// lineOffset/toolChangeMode already use there. Always appended regardless of
+// the active toolChangeMode (the server only acts on them for
+// 'fixedToolSensor' - Commit 4), same as those other fields are always sent
+// regardless of what kind of run it is.
+// No sensor location saved yet -> empty strings, which the server's
+// validation (added in Commit 4) will treat as "not configured", not as 0,0,0.
+function appendToolSensorFields(formData) {
+  var loc = getToolSensorLocation();
+  formData.append("toolSensorX", loc ? String(loc.x) : "");
+  formData.append("toolSensorY", loc ? String(loc.y) : "");
+  formData.append("toolSensorZ", loc ? String(loc.z) : "");
+  formData.append("toolSensorFirstBehaviour", getToolSensorFirstBehaviour());
+}
+
 // Skeleton script to replace the Visualiser cone with an STL of an endmill
 function replaceConeWith(toolid) {
   if (toolid = "635mmendmill") {
