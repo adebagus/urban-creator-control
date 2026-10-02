@@ -599,6 +599,17 @@ var pendingToolChange = null;
 // One-shot latch: the controller reports "Idle" repeatedly once it truly is
 // idle, but the "show the wizard now" event must fire only once per M6.
 var toolChangeWizardEmitted = false;
+// P10 Tahap 1b-i: how the CURRENT tracked job handles every M6 it hits -
+// 'pause' (Tahap 1a's wizard) or 'ignore' (skip silently, no wizard - see
+// send1Q()). Set fresh at the start of every tracked runJob() call (never
+// conditionally preserved), so unlike the three above it does not need to
+// join their reset-at-every-queue-dump discipline: there is no per-index
+// state here that could wrongly point at the wrong thing if left stale,
+// just one scalar that the NEXT tracked job always overwrites regardless of
+// what the last one left behind (locked down by a test that runs one
+// 'ignore' job immediately followed by one 'pause' job, with no reset
+// in between, and checks the second one is not left running 'ignore').
+var toolChangeMode = 'pause';
 var queuePointer = 0;
 var statusLoop;
 var frontEndUpdateLoop, sysinfoUpdateLoop
@@ -851,6 +862,11 @@ app.post('/runjob', (req, res) => {
     // lines from the chosen one on, and says how far its line numbers are from the
     // original file's, so the recorded resume line stays in ORIGINAL file lines.
     var recoveryLineOffset = (req.body && typeof req.body.lineOffset === 'string' && /^\d{1,9}$/.test(req.body.lineOffset)) ? parseInt(req.body.lineOffset, 10) : 0;
+    // P10 Tahap 1b-i: the client's chosen M6 handling for this run. Not
+    // trusted blindly - runJob() re-validates it with its own allow-list
+    // (anything other than exactly "ignore" becomes "pause", the safe
+    // default), same as this route already does for fileName/lineOffset.
+    var recoveryToolChangeMode = (req.body && req.body.toolChangeMode === 'ignore') ? 'ignore' : 'pause';
     fs.readFile(req.file.path, 'utf8', function(err, data) {
       if (err) {
         return console.log(err);
@@ -861,6 +877,7 @@ app.post('/runjob', (req, res) => {
         data: data,
         fileName: recoveryFileName,
         lineOffset: recoveryLineOffset,
+        toolChangeMode: recoveryToolChangeMode,
       }
       runJob(object)
     });
@@ -2756,6 +2773,12 @@ function runJob(object) {
       // test/reconnect-stale-state.test.js) - cleared again here regardless,
       // since a non-tracked run (trackRecovery false) never repopulates it.
       toolChangeQIndexes.clear();
+      // P10 Tahap 1b-i: only a tracked job may choose the mode - a probing
+      // routine or console command (isJob:false) leaves whatever the last
+      // tracked job set untouched (there is nothing of its own to set it to).
+      if (trackRecovery) {
+        toolChangeMode = (object.toolChangeMode === 'ignore') ? 'ignore' : 'pause';
+      }
       for (var i = 0; i < data.length; i++) {
 
         var line = data[i].replace("%", "").split(';'); // Remove everything after ; = comment
