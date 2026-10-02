@@ -44,7 +44,7 @@ function baseCtx() {
   const emitted = [];
   return {
     gcodeQueue: [], queuePointer: 0, sentBuffer: [], statusLoop: null, queueCounter: null,
-    toolChangeQIndexes: new Map(), toolChangeWizardQueue: [], toolChangeWizardPointer: 0, toolChangeWizardSentBuffer: [], pendingToolChange: null, toolChangeWizardEmitted: false,
+    toolChangeQIndexes: new Map(), toolChangeWizardQueue: [], toolChangeWizardPointer: 0, toolChangeWizardSentBuffer: [], VALID_TOOLCHANGE_MODES: ['ignore', 'fixedToolSensor'], pendingToolChange: null, toolChangeWizardEmitted: false, toolChangeMode: 'pause',
     status: {
       comms: { connectionStatus: 2, blocked: false, paused: false, awaitingToolChange: false, runStatus: 'Idle', queue: 0, alarm: '', interfaces: { type: 'usb' } },
       machine: { modals: {}, firmware: { type: 'grbl', platform: 'grbl', rxBufferSize: 254, blockBufferSize: '35', version: '', date: '', buffer: '' }, tool: { nexttool: {} } },
@@ -193,4 +193,74 @@ test('end-to-end: reaching a real M6 through send1Q(), then feeding real status 
   assert.equal(events.length, 1, 'exactly one wizard event, however many Idle reports arrived');
   assert.equal(events[0][1].line, 5);
   assert.equal(events[0][1].tool, '2');
+});
+
+// ============================================================================
+// Tahap 1b-ii, Commit 4: 'fixedToolSensor' must emit a DIFFERENT event
+// ('toolChangeProbeReady') from 'pause' ('toolChangeWizard') - the client
+// decides which dialog to render ("Probe & Continue" vs plain "Continue")
+// purely from which event arrived, so the two must never both fire for the
+// same M6, and must never be confused with each other.
+// ============================================================================
+
+test("'fixedToolSensor' mode emits 'toolChangeProbeReady', NEVER 'toolChangeWizard' - the client must be able to tell the two dialogs apart from the event name alone", () => {
+  const ctx = isolatedHarness();
+  ctx.toolChangeMode = 'fixedToolSensor';
+  ctx.status.comms.awaitingToolChange = true;
+  ctx.pendingToolChange = { line: 7, tool: '4' };
+  ctx.sentBuffer = [];
+
+  ctx.parseFeedback(status('Idle'));
+
+  assert.equal(ctx._emitted.filter((e) => e[0] === 'toolChangeProbeReady').length, 1);
+  assert.equal(ctx._emitted.filter((e) => e[0] === 'toolChangeWizard').length, 0, 'must NEVER also fire the plain-Continue event for this mode');
+});
+
+test("'pause' mode (the default) still emits 'toolChangeWizard', NEVER 'toolChangeProbeReady' - unaffected by Commit 4's new branch", () => {
+  const ctx = isolatedHarness();
+  ctx.toolChangeMode = 'pause';
+  ctx.status.comms.awaitingToolChange = true;
+  ctx.pendingToolChange = { line: 7, tool: '4' };
+  ctx.sentBuffer = [];
+
+  ctx.parseFeedback(status('Idle'));
+
+  assert.equal(ctx._emitted.filter((e) => e[0] === 'toolChangeWizard').length, 1);
+  assert.equal(ctx._emitted.filter((e) => e[0] === 'toolChangeProbeReady').length, 0);
+});
+
+test("'fixedToolSensor': the one-shot latch still applies - repeated Idle reports emit 'toolChangeProbeReady' exactly once, same guarantee as 'pause'", () => {
+  const ctx = isolatedHarness();
+  ctx.toolChangeMode = 'fixedToolSensor';
+  ctx.status.comms.awaitingToolChange = true;
+  ctx.pendingToolChange = { line: 7, tool: null };
+  ctx.sentBuffer = [];
+
+  for (let i = 0; i < 10; i++) ctx.parseFeedback(status('Idle'));
+
+  assert.equal(ctx._emitted.filter((e) => e[0] === 'toolChangeProbeReady').length, 1, 'ten Idle reports, still exactly one');
+});
+
+test("'fixedToolSensor': Idle arriving while sentBuffer still has unacked lines must NOT emit 'toolChangeProbeReady' yet - same drained-buffer precondition as 'pause'", () => {
+  const ctx = isolatedHarness();
+  ctx.toolChangeMode = 'fixedToolSensor';
+  ctx.status.comms.awaitingToolChange = true;
+  ctx.pendingToolChange = { line: 42, tool: '3' };
+  ctx.sentBuffer = ['G1 X1'];
+
+  ctx.parseFeedback(status('Idle'));
+
+  assert.deepEqual(ctx._emitted.filter((e) => e[0] === 'toolChangeProbeReady'), []);
+});
+
+test('end-to-end (fixedToolSensor): reaching a real M6 in this mode emits toolChangeProbeReady, not toolChangeWizard', () => {
+  const h = endToEndHarness();
+  h.startJob(buildJob(10, 5), { toolChangeMode: 'fixedToolSensor' });
+  for (let i = 0; i < 4; i++) h.ack();
+
+  assert.equal(h.ctx.status.comms.awaitingToolChange, true, 'precondition: parked at the M6');
+  for (let i = 0; i < 5; i++) h.ctx.parseFeedback(status('Idle'));
+
+  assert.equal(h.ctx._emitted.filter((e) => e[0] === 'toolChangeProbeReady').length, 1);
+  assert.equal(h.ctx._emitted.filter((e) => e[0] === 'toolChangeWizard').length, 0);
 });

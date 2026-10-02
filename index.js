@@ -599,16 +599,23 @@ var pendingToolChange = null;
 // One-shot latch: the controller reports "Idle" repeatedly once it truly is
 // idle, but the "show the wizard now" event must fire only once per M6.
 var toolChangeWizardEmitted = false;
-// P10 Tahap 1b-i: how the CURRENT tracked job handles every M6 it hits -
-// 'pause' (Tahap 1a's wizard) or 'ignore' (skip silently, no wizard - see
-// send1Q()). Set fresh at the start of every tracked runJob() call (never
-// conditionally preserved), so unlike the three above it does not need to
-// join their reset-at-every-queue-dump discipline: there is no per-index
-// state here that could wrongly point at the wrong thing if left stale,
-// just one scalar that the NEXT tracked job always overwrites regardless of
-// what the last one left behind (locked down by a test that runs one
-// 'ignore' job immediately followed by one 'pause' job, with no reset
-// in between, and checks the second one is not left running 'ignore').
+// P10 Tahap 1b-i/1b-ii: the three ways a tracked job's M6 lines are handled -
+// 'pause' (Tahap 1a's wizard), 'ignore' (skip silently, no wizard), or
+// 'fixedToolSensor' (Tahap 1b-ii: parks the same way as 'pause', but
+// parseFeedback() emits a DIFFERENT event once genuinely Idle - see
+// TOOLCHANGE_WIZARD_EVENT - so the client shows the "Probe & Continue"
+// dialog instead of the plain "Continue" one). Anything else, including
+// nothing sent at all, is 'pause' - the safe default.
+var VALID_TOOLCHANGE_MODES = ['ignore', 'fixedToolSensor'];
+// How the CURRENT tracked job handles every M6 it hits. Set fresh at the
+// start of every tracked runJob() call (never conditionally preserved), so
+// unlike the three above it does not need to join their
+// reset-at-every-queue-dump discipline: there is no per-index state here
+// that could wrongly point at the wrong thing if left stale, just one
+// scalar that the NEXT tracked job always overwrites regardless of what the
+// last one left behind (locked down by a test that runs one 'ignore' job
+// immediately followed by one 'pause' job, with no reset in between, and
+// checks the second one is not left running 'ignore').
 var toolChangeMode = 'pause';
 // P10 Tahap 1b-ii: a SEPARATE queue/pointer/sent-buffer for Fixed Tool
 // Sensor's automatic probe gcode - proven necessary, not a style choice: a
@@ -880,7 +887,7 @@ app.post('/runjob', (req, res) => {
     // trusted blindly - runJob() re-validates it with its own allow-list
     // (anything other than exactly "ignore" becomes "pause", the safe
     // default), same as this route already does for fileName/lineOffset.
-    var recoveryToolChangeMode = (req.body && req.body.toolChangeMode === 'ignore') ? 'ignore' : 'pause';
+    var recoveryToolChangeMode = (req.body && VALID_TOOLCHANGE_MODES.indexOf(req.body.toolChangeMode) !== -1) ? req.body.toolChangeMode : 'pause';
     fs.readFile(req.file.path, 'utf8', function(err, data) {
       if (err) {
         return console.log(err);
@@ -2786,7 +2793,7 @@ function runJob(object) {
       // routine or console command (isJob:false) leaves whatever the last
       // tracked job set untouched (there is nothing of its own to set it to).
       if (trackRecovery) {
-        toolChangeMode = (object.toolChangeMode === 'ignore') ? 'ignore' : 'pause';
+        toolChangeMode = (VALID_TOOLCHANGE_MODES.indexOf(object.toolChangeMode) !== -1) ? object.toolChangeMode : 'pause';
       }
       for (var i = 0; i < data.length; i++) {
 
@@ -3261,7 +3268,18 @@ function parseFeedback(data) {
     // wizard is only ever told to show ONCE per M6, not on every status tick.
     if (status.comms.awaitingToolChange && !toolChangeWizardEmitted && sentBuffer.length === 0) {
       toolChangeWizardEmitted = true;
-      io.sockets.emit('toolChangeWizard', pendingToolChange);
+      // P10 Tahap 1b-ii: a DIFFERENT event for 'fixedToolSensor' - the
+      // client shows the "Probe & Continue" dialog for that one (Commit 6)
+      // instead of the plain "Continue" dialog Tahap 1a built for 'pause'.
+      // Deliberately two distinct event names, not one event with a "mode"
+      // field, so a client that only knows the old event (or a future mode
+      // this client version has never heard of) simply never sees a dialog
+      // it would not know how to render, rather than rendering the wrong one.
+      if (toolChangeMode === 'fixedToolSensor') {
+        io.sockets.emit('toolChangeProbeReady', pendingToolChange);
+      } else {
+        io.sockets.emit('toolChangeWizard', pendingToolChange);
+      }
     }
   }
   if (state == "Alarm") {
@@ -3889,6 +3907,10 @@ function send1Q() {
                 if (gcodeQueue.length > 0) send1Q();
               });
             } else {
+              // 'pause' and 'fixedToolSensor' both park the same way here -
+              // only the EVENT emitted once genuinely Idle differs (see
+              // parseFeedback() below), so the client knows which dialog to
+              // show ("Continue" vs "Probe & Continue").
               pendingToolChange = toolChangeQIndexes.get(queuePointer - 1);
               status.comms.awaitingToolChange = true;
               toolChangeWizardEmitted = false;

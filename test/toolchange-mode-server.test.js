@@ -36,8 +36,12 @@ function grabFunction(name) {
 // source text (same convention as the existing recoveryLineOffset checks).
 // --------------------------------------------------------------------------
 
-test("structure: /runjob reads req.body.toolChangeMode with an explicit allow-list (only 'ignore' selects Ignore; anything else, including nothing sent, is 'pause')", () => {
-  assert.match(INDEX_SRC, /var recoveryToolChangeMode = \(req\.body && req\.body\.toolChangeMode === 'ignore'\) \? 'ignore' : 'pause';/);
+test("structure: /runjob reads req.body.toolChangeMode with an explicit allow-list (only 'ignore'/'fixedToolSensor' pass through; anything else, including nothing sent, is 'pause')", () => {
+  assert.match(INDEX_SRC, /var recoveryToolChangeMode = \(req\.body && VALID_TOOLCHANGE_MODES\.indexOf\(req\.body\.toolChangeMode\) !== -1\) \? req\.body\.toolChangeMode : 'pause';/);
+});
+
+test("structure: the allow-list itself is exactly ['ignore', 'fixedToolSensor'] - 'pause' is the fallback, not a list member", () => {
+  assert.match(INDEX_SRC, /var VALID_TOOLCHANGE_MODES = \['ignore', 'fixedToolSensor'\];/);
 });
 
 test('structure: the validated value is passed into the object runJob() receives', () => {
@@ -59,7 +63,7 @@ function harness() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uc-tc-mode-'));
   const ctx = {
     gcodeQueue: [], queuePointer: 0, sentBuffer: [], statusLoop: null, queueCounter: null,
-    toolChangeQIndexes: new Map(), toolChangeWizardQueue: [], toolChangeWizardPointer: 0, toolChangeWizardSentBuffer: [], pendingToolChange: null, toolChangeWizardEmitted: false, toolChangeMode: 'pause',
+    toolChangeQIndexes: new Map(), toolChangeWizardQueue: [], toolChangeWizardPointer: 0, toolChangeWizardSentBuffer: [], VALID_TOOLCHANGE_MODES: ['ignore', 'fixedToolSensor'], pendingToolChange: null, toolChangeWizardEmitted: false, toolChangeMode: 'pause',
     status: {
       comms: { connectionStatus: 2, blocked: false, paused: false, awaitingToolChange: false, runStatus: 'Idle', queue: 0, alarm: '', interfaces: { type: 'usb' } },
       machine: { modals: {}, firmware: { type: 'grbl', platform: 'grbl', rxBufferSize: 254, blockBufferSize: '35', version: '', date: '', buffer: '' }, tool: { nexttool: {} } },
@@ -91,11 +95,25 @@ test("runJob(): object.toolChangeMode 'ignore' sets the module mode to 'ignore'"
   assert.equal(ctx.toolChangeMode, 'ignore');
 });
 
+test("runJob(): object.toolChangeMode 'fixedToolSensor' sets the module mode to 'fixedToolSensor'", () => {
+  const ctx = harness();
+  ctx.runJob({ isJob: true, data: 'G1 X1 F500', toolChangeMode: 'fixedToolSensor' });
+  assert.equal(ctx.toolChangeMode, 'fixedToolSensor');
+});
+
 test("runJob(): object.toolChangeMode 'pause' (or missing, or garbage) sets the module mode to 'pause'", () => {
-  for (const value of ['pause', undefined, '', 'Ignore', 'IGNORE', ' ignore', 'fixedToolSensor', 0, null]) {
+  for (const value of ['pause', undefined, '', 'Ignore', 'IGNORE', ' ignore', 'FixedToolSensor', 'fixed-tool-sensor', 0, null]) {
     const ctx = harness();
     ctx.runJob({ isJob: true, data: 'G1 X1 F500', toolChangeMode: value });
     assert.equal(ctx.toolChangeMode, 'pause', JSON.stringify(value));
+  }
+});
+
+test("runJob(): all THREE modes are correctly distinguished from each other, not just each one individually falling back to pause", () => {
+  for (const mode of ['pause', 'ignore', 'fixedToolSensor']) {
+    const ctx = harness();
+    ctx.runJob({ isJob: true, data: 'G1 X1 F500', toolChangeMode: mode });
+    assert.equal(ctx.toolChangeMode, mode, mode);
   }
 });
 

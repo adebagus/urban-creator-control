@@ -41,7 +41,7 @@ function harness(mode) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uc-tc-ignore-'));
   const ctx = {
     gcodeQueue: [], queuePointer: 0, sentBuffer: [], statusLoop: null, queueCounter: null,
-    toolChangeQIndexes: new Map(), toolChangeWizardQueue: [], toolChangeWizardPointer: 0, toolChangeWizardSentBuffer: [], pendingToolChange: null, toolChangeWizardEmitted: false, toolChangeMode: mode || 'pause',
+    toolChangeQIndexes: new Map(), toolChangeWizardQueue: [], toolChangeWizardPointer: 0, toolChangeWizardSentBuffer: [], VALID_TOOLCHANGE_MODES: ['ignore', 'fixedToolSensor'], pendingToolChange: null, toolChangeWizardEmitted: false, toolChangeMode: mode || 'pause',
     status: {
       comms: { connectionStatus: 2, blocked: false, paused: false, awaitingToolChange: false, runStatus: 'Idle', queue: 0, alarm: '', interfaces: { type: 'usb' } },
       machine: { modals: {}, firmware: { type: 'grbl', platform: 'grbl', rxBufferSize: 254, blockBufferSize: '35', version: '', date: '', buffer: '' }, tool: { nexttool: {} } },
@@ -149,6 +149,18 @@ test("Pause mode (default) is unaffected: M6 still pauses and waits for resumeTo
   assert.equal(h.ctx.pendingToolChange.line, 5);
   for (let i = 0; i < 20; i++) h.ctx.send1Q(); // calling it repeatedly must still do nothing further
   assert.equal(h.written.some((s) => /\$G/.test(s)), false, 'still parked - nothing beyond the M6 was sent');
+});
+
+test("Tahap 1b-ii Commit 4: 'fixedToolSensor' mode parks in send1Q() exactly like 'pause' does - same gate, same pendingToolChange, no auto-continue like 'ignore'", () => {
+  const h = harness('fixedToolSensor');
+  h.startJob(buildJob(10, 5));
+  for (let i = 0; i < 4; i++) h.ack();
+
+  assert.equal(h.ctx.status.comms.awaitingToolChange, true);
+  assert.equal(h.ctx.pendingToolChange.line, 5);
+  assert.equal(h.ctx.pendingToolChange.tool, '2');
+  for (let i = 0; i < 20; i++) h.ctx.send1Q();
+  assert.equal(h.written.some((s) => /\$G/.test(s)), false, 'still parked - fixedToolSensor does not auto-continue the way ignore does');
 });
 
 test('structure: the Ignore-mode continuation uses setImmediate, not a direct recursive call (stack-safety for many consecutive M6 lines)', () => {

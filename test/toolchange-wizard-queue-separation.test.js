@@ -55,7 +55,7 @@ function harness(rxBufferSize) {
   const ctx = {
     gcodeQueue: [], queuePointer: 0, sentBuffer: [], statusLoop: null, queueCounter: null,
     toolChangeQIndexes: new Map(), pendingToolChange: null, toolChangeWizardEmitted: false, toolChangeMode: 'pause',
-    toolChangeWizardQueue: [], toolChangeWizardPointer: 0, toolChangeWizardSentBuffer: [],
+    toolChangeWizardQueue: [], toolChangeWizardPointer: 0, toolChangeWizardSentBuffer: [], VALID_TOOLCHANGE_MODES: ['ignore', 'fixedToolSensor'],
     fluidncConfig: '',
     status: {
       comms: { connectionStatus: 2, blocked: false, paused: false, awaitingToolChange: false, runStatus: 'Idle', queue: 0, alarm: '', interfaces: { type: 'usb' } },

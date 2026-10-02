@@ -60,7 +60,7 @@ function harness() {
   const timers = [];
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uc-stale-'));
   const ctx = {
-    gcodeQueue: [], queuePointer: 0, sentBuffer: [], statusLoop: null, queueCounter: null, toolChangeQIndexes: new Map(), toolChangeWizardQueue: [], toolChangeWizardPointer: 0, toolChangeWizardSentBuffer: [],
+    gcodeQueue: [], queuePointer: 0, sentBuffer: [], statusLoop: null, queueCounter: null, toolChangeQIndexes: new Map(), toolChangeWizardQueue: [], toolChangeWizardPointer: 0, toolChangeWizardSentBuffer: [], VALID_TOOLCHANGE_MODES: ['ignore', 'fixedToolSensor'],
     status: {
       comms: { connectionStatus: 2, blocked: false, paused: false, runStatus: 'Idle', queue: 0, alarm: '', interfaces: { type: 'usb' } },
       machine: { modals: {}, firmware: { type: 'grbl', platform: 'grbl', rxBufferSize: 254, blockBufferSize: '35', version: '', date: '', buffer: '' }, tool: { nexttool: {} } },
