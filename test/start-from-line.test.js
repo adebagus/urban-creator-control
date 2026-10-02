@@ -919,7 +919,7 @@ test('gone: the editor is never switched to and never focused by this feature', 
 
 test('server: /runjob accepts a validated lineOffset and passes it to runJob', () => {
   assert.match(INDEX_JS, /var recoveryLineOffset = \(req\.body && typeof req\.body\.lineOffset === 'string' && \/\^\\d\{1,9\}\$\/\.test\(req\.body\.lineOffset\)\) \? parseInt\(req\.body\.lineOffset, 10\) : 0;/);
-  assert.match(INDEX_JS, /fileName: recoveryFileName,\s*lineOffset: recoveryLineOffset,\s*toolChangeMode: recoveryToolChangeMode,\s*\}\s*runJob\(object\)/);
+  assert.match(INDEX_JS, /fileName: recoveryFileName,\s*lineOffset: recoveryLineOffset,\s*toolChangeMode: recoveryToolChangeMode,\s*toolSensorLocation: recoverySensorLocation,\s*toolSensorFirstBehaviour: recoverySensorFirstBehaviour,\s*\}\s*runJob\(object\)/);
 });
 
 test('server: the payload with its raise line - the recorded resume line is a line of the ORIGINAL file (also through the inserted lines)', () => {

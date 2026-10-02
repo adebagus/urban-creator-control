@@ -44,8 +44,55 @@ test("structure: the allow-list itself is exactly ['ignore', 'fixedToolSensor'] 
   assert.match(INDEX_SRC, /var VALID_TOOLCHANGE_MODES = \['ignore', 'fixedToolSensor'\];/);
 });
 
+// --------------------------------------------------------------------------
+// Tahap 1b-ii Commit 5: /runjob also reads the Fixed Tool Sensor's location
+// and first-tool behaviour (sent with every real job POST since Commit 2,
+// unread until now).
+// --------------------------------------------------------------------------
+
+test('structure: /runjob reads toolSensorX/Y/Z through parseFiniteFloat, building a location only when all three are valid', () => {
+  assert.match(INDEX_SRC, /var sensorX = parseFiniteFloat\(req\.body && req\.body\.toolSensorX\);/);
+  assert.match(INDEX_SRC, /var sensorY = parseFiniteFloat\(req\.body && req\.body\.toolSensorY\);/);
+  assert.match(INDEX_SRC, /var sensorZ = parseFiniteFloat\(req\.body && req\.body\.toolSensorZ\);/);
+  assert.match(INDEX_SRC, /var recoverySensorLocation = \(sensorX !== null && sensorY !== null && sensorZ !== null\) \?\s*\{ x: sensorX, y: sensorY, z: sensorZ \} : null;/);
+});
+
+test('structure: /runjob reads toolSensorFirstBehaviour through its own allow-list, defaulting to always-wizard', () => {
+  assert.match(INDEX_SRC, /var VALID_TOOLSENSOR_FIRST_BEHAVIOURS = \['always-wizard', 'always-probe', 'prompt'\];/);
+  assert.match(INDEX_SRC, /var recoverySensorFirstBehaviour = \(req\.body && VALID_TOOLSENSOR_FIRST_BEHAVIOURS\.indexOf\(req\.body\.toolSensorFirstBehaviour\) !== -1\) \?\s*req\.body\.toolSensorFirstBehaviour : 'always-wizard';/);
+});
+
+// parseFiniteFloat()/isValidSensorLocation(): plain functions, executed for real.
+const parseFiniteFloat = (() => {
+  const start = INDEX_SRC.indexOf('function parseFiniteFloat(');
+  const end = INDEX_SRC.indexOf('\n}\n', start);
+  return new Function('return ' + INDEX_SRC.slice(start, end + 2))();
+})();
+const isValidSensorLocation = (() => {
+  const start = INDEX_SRC.indexOf('function isValidSensorLocation(');
+  const end = INDEX_SRC.indexOf('\n}\n', start);
+  return new Function('return ' + INDEX_SRC.slice(start, end + 2))();
+})();
+
+test('parseFiniteFloat(): accepts real numeric strings, including negative/decimal, rejects empty/whitespace/non-numeric/non-string', () => {
+  assert.equal(parseFiniteFloat('12.5'), 12.5);
+  assert.equal(parseFiniteFloat('-3'), -3);
+  assert.equal(parseFiniteFloat('0'), 0);
+  for (const bad of ['', '   ', 'abc', '12abc', 'NaN', 'Infinity', undefined, null, 5, {}]) {
+    assert.equal(parseFiniteFloat(bad), null, JSON.stringify(bad));
+  }
+});
+
+test('isValidSensorLocation(): true only for a plain {x, y, z} of finite numbers', () => {
+  assert.equal(isValidSensorLocation({ x: 1, y: 2, z: 3 }), true);
+  assert.equal(isValidSensorLocation({ x: -1.5, y: 0, z: -40 }), true);
+  for (const bad of [null, undefined, {}, { x: 1, y: 2 }, { x: '1', y: 2, z: 3 }, { x: NaN, y: 2, z: 3 }, { x: Infinity, y: 2, z: 3 }]) {
+    assert.equal(isValidSensorLocation(bad), false, JSON.stringify(bad));
+  }
+});
+
 test('structure: the validated value is passed into the object runJob() receives', () => {
-  assert.match(INDEX_SRC, /fileName: recoveryFileName,\s*lineOffset: recoveryLineOffset,\s*toolChangeMode: recoveryToolChangeMode,\s*\}\s*runJob\(object\)/);
+  assert.match(INDEX_SRC, /fileName: recoveryFileName,\s*lineOffset: recoveryLineOffset,\s*toolChangeMode: recoveryToolChangeMode,\s*toolSensorLocation: recoverySensorLocation,\s*toolSensorFirstBehaviour: recoverySensorFirstBehaviour,\s*\}\s*runJob\(object\)/);
 });
 
 // --------------------------------------------------------------------------
@@ -63,7 +110,7 @@ function harness() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uc-tc-mode-'));
   const ctx = {
     gcodeQueue: [], queuePointer: 0, sentBuffer: [], statusLoop: null, queueCounter: null,
-    toolChangeQIndexes: new Map(), toolChangeWizardQueue: [], toolChangeWizardPointer: 0, toolChangeWizardSentBuffer: [], VALID_TOOLCHANGE_MODES: ['ignore', 'fixedToolSensor'], pendingToolChange: null, toolChangeWizardEmitted: false, toolChangeMode: 'pause',
+    toolChangeQIndexes: new Map(), toolChangeWizardQueue: [], toolChangeWizardPointer: 0, toolChangeWizardSentBuffer: [], VALID_TOOLCHANGE_MODES: ['ignore', 'fixedToolSensor'], VALID_TOOLSENSOR_FIRST_BEHAVIOURS: ['always-wizard', 'always-probe', 'prompt'], pendingToolChange: null, toolChangeWizardEmitted: false, toolChangeMode: 'pause',
     status: {
       comms: { connectionStatus: 2, blocked: false, paused: false, awaitingToolChange: false, runStatus: 'Idle', queue: 0, alarm: '', interfaces: { type: 'usb' } },
       machine: { modals: {}, firmware: { type: 'grbl', platform: 'grbl', rxBufferSize: 254, blockBufferSize: '35', version: '', date: '', buffer: '' }, tool: { nexttool: {} } },
@@ -82,7 +129,7 @@ function harness() {
   vm.createContext(ctx);
   vm.runInContext(
     BUFFER_VARS + MODAL_VARS +
-      ['isToolChangeLine', 'toolChangeToolNumber', 'addQToEnd', 'send1Q', 'BufferSpace', 'machineSend', 'runJob']
+      ['isToolChangeLine', 'toolChangeToolNumber', 'addQToEnd', 'send1Q', 'BufferSpace', 'machineSend', 'isValidSensorLocation', 'runJob']
         .map(grabFunction).join('\n'),
     ctx
   );

@@ -607,6 +607,27 @@ var toolChangeWizardEmitted = false;
 // dialog instead of the plain "Continue" one). Anything else, including
 // nothing sent at all, is 'pause' - the safe default.
 var VALID_TOOLCHANGE_MODES = ['ignore', 'fixedToolSensor'];
+// P10 Tahap 1b-ii Commit 5: mirrors the client's own TOOLSENSOR allow-list
+// (app/js/toolchange.js) - anything else, including nothing sent, is
+// 'always-wizard' (see the /runjob route).
+var VALID_TOOLSENSOR_FIRST_BEHAVIOURS = ['always-wizard', 'always-probe', 'prompt'];
+// Same shape of validation as recoveryLineOffset's regex above, for a value
+// that must be a genuine finite number, not just "parses to something" -
+// Number("") is 0, Number(" ") is 0, and parseFloat("12abc") is 12, none of
+// which should ever be silently treated as a real sensor coordinate.
+function parseFiniteFloat(value) {
+  if (typeof value !== 'string' || value.trim() === '') return null;
+  var n = Number(value);
+  return isFinite(n) ? n : null;
+}
+// Used by runJob() to re-validate object.toolSensorLocation independently of
+// the /runjob route that normally builds it - same defence-in-depth reasoning
+// as toolChangeMode's own independent re-validation there.
+function isValidSensorLocation(loc) {
+  return !!loc && typeof loc.x === 'number' && isFinite(loc.x) &&
+    typeof loc.y === 'number' && isFinite(loc.y) &&
+    typeof loc.z === 'number' && isFinite(loc.z);
+}
 // How the CURRENT tracked job handles every M6 it hits. Set fresh at the
 // start of every tracked runJob() call (never conditionally preserved), so
 // unlike the three above it does not need to join their
@@ -631,6 +652,32 @@ var toolChangeMode = 'pause';
 var toolChangeWizardQueue = [];
 var toolChangeWizardPointer = 0;
 var toolChangeWizardSentBuffer = [];
+// Fired (and cleared) the moment toolChangeWizardQueue/SentBuffer both fully
+// drain - the ONLY way the probe sequencer (Commit 5) knows it is safe to
+// resume the main job's own sender: send1Q() tracks buffer space using only
+// sentBuffer's own bytes, so running it while toolChangeWizardSentBuffer
+// still has something physically in flight on the SAME controller RX buffer
+// would make both senders independently believe they have the full buffer
+// available - a real overflow risk, not just a bookkeeping one. Not needed
+// for the approach/probe phase (nothing from the main job sends during that
+// phase either way) - only for the hand-back at the very end of a sequence.
+var toolChangeWizardDoneCallback = null;
+// P10 Tahap 1b-ii Commit 5: Fixed Tool Sensor's per-job state. Set fresh at
+// the start of every tracked runJob() call (see toolChangeMode's own comment
+// for why that is safe without joining the reset-at-queue-dump discipline
+// below) - EXCEPT toolChangeSensorBaseline, which is less like toolChangeMode
+// and more like toolChangeQIndexes/pendingToolChange: it is read back by
+// EVERY subsequent M6 in the SAME job (that is its entire purpose - later
+// tools reuse the first tool's baseline), so a stale value surviving an
+// interrupted job could silently feed the WRONG number into a later job's
+// G10 compensation. It therefore also joins the explicit reset-at-queue-dump
+// discipline alongside toolSensorProbeState.
+var toolChangeSensorLocation = null; // { x, y, z } in MACHINE coordinates, or null if not configured
+var toolChangeSensorFirstBehaviour = 'always-wizard';
+var toolChangeSensorBaseline = null; // work-Z (in the WCS active when captured) of the reference tool's contact point
+// In-flight probe sequence state (null when no sequence is running) - see
+// startToolSensorProbe()/handleToolSensorProbeResult() below.
+var toolSensorProbeState = null;
 var queuePointer = 0;
 var statusLoop;
 var frontEndUpdateLoop, sysinfoUpdateLoop
@@ -888,6 +935,26 @@ app.post('/runjob', (req, res) => {
     // (anything other than exactly "ignore" becomes "pause", the safe
     // default), same as this route already does for fileName/lineOffset.
     var recoveryToolChangeMode = (req.body && VALID_TOOLCHANGE_MODES.indexOf(req.body.toolChangeMode) !== -1) ? req.body.toolChangeMode : 'pause';
+    // P10 Tahap 1b-ii Commit 5: the Fixed Tool Sensor's location (machine
+    // coordinates) and first-tool behaviour, sent with every real job POST
+    // since Commit 2 but not read until now. A missing/malformed coordinate
+    // (not a finite number - includes the empty string appendToolSensorFields()
+    // sends when nothing is configured) makes the WHOLE location null, not a
+    // partial {x, y, NaN} - startToolSensorProbe() treats null as "not
+    // configured" and refuses outright rather than probing at a bogus point.
+    var sensorX = parseFiniteFloat(req.body && req.body.toolSensorX);
+    var sensorY = parseFiniteFloat(req.body && req.body.toolSensorY);
+    var sensorZ = parseFiniteFloat(req.body && req.body.toolSensorZ);
+    var recoverySensorLocation = (sensorX !== null && sensorY !== null && sensorZ !== null) ?
+      { x: sensorX, y: sensorY, z: sensorZ } : null;
+    // v1 limitation (deliberate, approved): only 'always-probe' actually
+    // changes behaviour (see startToolSensorProbe() - there is no "first
+    // tool" branch at all, every M6 in a job is handled the same way once a
+    // baseline exists). 'always-wizard'/'prompt' are accepted and stored
+    // (the client UI already offers them from Commit 1) but have no effect
+    // yet - not a bug, a scoped-down v1.
+    var recoverySensorFirstBehaviour = (req.body && VALID_TOOLSENSOR_FIRST_BEHAVIOURS.indexOf(req.body.toolSensorFirstBehaviour) !== -1) ?
+      req.body.toolSensorFirstBehaviour : 'always-wizard';
     fs.readFile(req.file.path, 'utf8', function(err, data) {
       if (err) {
         return console.log(err);
@@ -899,6 +966,8 @@ app.post('/runjob', (req, res) => {
         fileName: recoveryFileName,
         lineOffset: recoveryLineOffset,
         toolChangeMode: recoveryToolChangeMode,
+        toolSensorLocation: recoverySensorLocation,
+        toolSensorFirstBehaviour: recoverySensorFirstBehaviour,
       }
       runJob(object)
     });
@@ -1734,6 +1803,10 @@ io.on("connection", function(socket) {
               io.sockets.emit('data', output);
             }
             io.sockets.emit('prbResult', status.machine.probe);
+            // P10 Tahap 1b-ii Commit 5: a no-op unless a Fixed Tool Sensor
+            // sequence is actually waiting on this specific probe - see
+            // handleToolSensorProbeResult()'s own phase check.
+            handleToolSensorProbeResult(status.machine.probe);
           };
 
           if (data.indexOf("[GC:") === 0) {
@@ -2543,9 +2616,26 @@ io.on("connection", function(socket) {
   // Resume above cannot get past on its own (see Commit 2/4's tests).
   socket.on('resumeToolChange', function() {
     if (!status.comms.awaitingToolChange) return; // stray/duplicate click
+    // P10 Tahap 1b-ii Commit 5: fixedToolSensor must go through
+    // startToolSensorProbe, which applies compensation and resumes the job
+    // ITSELF only once its own gcode is fully acked. Resuming here instead
+    // would either skip tool-length compensation entirely (silently wrong Z
+    // for the new tool), or - if a probe sequence happens to be mid-flight -
+    // call send1Q() concurrently with toolChangeWizardSentBuffer still
+    // having something physically in flight on the same controller RX
+    // buffer (see toolChangeWizardDoneCallback's comment for why that is a
+    // real overflow risk, not just a bookkeeping one).
+    if (toolChangeMode === 'fixedToolSensor') {
+      serialLog('error', 'resumeToolChange refused: fixedToolSensor mode requires startToolSensorProbe');
+      return;
+    }
     status.comms.awaitingToolChange = false;
     pendingToolChange = null;
     send1Q();
+  });
+
+  socket.on('startToolSensorProbe', function() {
+    startToolSensorProbe();
   });
 
   socket.on('stop', function(data) {
@@ -2601,6 +2691,9 @@ io.on("connection", function(socket) {
           toolChangeWizardQueue.length = 0;
           toolChangeWizardPointer = 0;
           toolChangeWizardSentBuffer.length = 0;
+          toolChangeWizardDoneCallback = null;
+          toolSensorProbeState = null;
+          toolChangeSensorBaseline = null;
           debug_log('Clearing Lockout');
           switch (status.machine.firmware.type) {
             case 'grbl':
@@ -2789,11 +2882,32 @@ function runJob(object) {
       // test/reconnect-stale-state.test.js) - cleared again here regardless,
       // since a non-tracked run (trackRecovery false) never repopulates it.
       toolChangeQIndexes.clear();
+      // P10 Tahap 1b-ii Commit 5: same reasoning - a probe sequence (if one
+      // was somehow still active) belongs to a job that is gone by the time
+      // a new runJob() legitimately starts.
+      toolSensorProbeState = null;
+      toolChangeWizardDoneCallback = null;
       // P10 Tahap 1b-i: only a tracked job may choose the mode - a probing
       // routine or console command (isJob:false) leaves whatever the last
       // tracked job set untouched (there is nothing of its own to set it to).
       if (trackRecovery) {
         toolChangeMode = (VALID_TOOLCHANGE_MODES.indexOf(object.toolChangeMode) !== -1) ? object.toolChangeMode : 'pause';
+        // P10 Tahap 1b-ii Commit 5: re-validated independently of the route,
+        // same reasoning as toolChangeMode just above - object.toolSensorLocation
+        // must be exactly a plain {x, y, z} of finite numbers, or it is treated
+        // as not configured at all.
+        toolChangeSensorLocation = isValidSensorLocation(object.toolSensorLocation) ? {
+          x: object.toolSensorLocation.x,
+          y: object.toolSensorLocation.y,
+          z: object.toolSensorLocation.z
+        } : null;
+        toolChangeSensorFirstBehaviour = (VALID_TOOLSENSOR_FIRST_BEHAVIOURS.indexOf(object.toolSensorFirstBehaviour) !== -1) ?
+          object.toolSensorFirstBehaviour : 'always-wizard';
+        // P10 Tahap 1b-ii Commit 5: a fresh tracked job never starts with a
+        // baseline from a previous job - see the comment on this variable's
+        // declaration for why it does NOT just rely on the reset-at-queue-dump
+        // discipline alone.
+        toolChangeSensorBaseline = null;
       }
       for (var i = 0; i < data.length; i++) {
 
@@ -2917,6 +3031,9 @@ function stopPort() {
   toolChangeWizardQueue.length = 0;
   toolChangeWizardPointer = 0;
   toolChangeWizardSentBuffer.length = 0;
+  toolChangeWizardDoneCallback = null;
+  toolSensorProbeState = null;
+  toolChangeSensorBaseline = null;
 
   if (typeof port === 'undefined' || !port) {
     return; // never connected - nothing to close
@@ -3285,6 +3402,15 @@ function parseFeedback(data) {
   if (state == "Alarm") {
     // debug_log("ALARM:  " + data)
     status.comms.connectionStatus = 5;
+    // P10 Tahap 1b-ii Commit 5: a probe failing to trigger (or any other
+    // alarm - hard limit, soft limit, etc.) mid-sequence leaves the machine
+    // somewhere the sequence's own assumptions (origin snapshot, planned
+    // return path) no longer reliably describe. Clear it here rather than
+    // only at the 4 queue-dump sites: an alarm does NOT itself dump the main
+    // job's queue (the operator may just Clear Alarm and keep going), but a
+    // stale toolSensorProbeState must never let a LATER, unrelated probe
+    // result be mistaken for this dead sequence's own.
+    toolSensorProbeState = null;
     switch (status.machine.firmware.type) {
       case 'grbl':
         //var alarmCode = parseInt(data.split(':')[1]);
@@ -3789,7 +3915,12 @@ function sendToolChangeWizardQ() {
 //     artificially tiny buffer + long line, even though no realistic probe
 //     gcode line comes remotely close (worst case ~28 bytes against a
 //     minimum real buffer of 126).
-function startToolChangeWizardSend(gcodeLines) {
+// P10 Tahap 1b-ii Commit 5: onDrained (optional) fires exactly once, the
+// moment toolChangeWizardQueue/SentBuffer both fully drain for THIS call -
+// see toolChangeWizardDoneCallback's declaration for why the probe sequencer
+// needs this instead of just calling send1Q() right after this function
+// returns (returning here only means the first line was WRITTEN, not acked).
+function startToolChangeWizardSend(gcodeLines, onDrained) {
   if (!status.comms.awaitingToolChange) {
     serialLog('error', 'startToolChangeWizardSend refused: not awaiting a tool change');
     return false;
@@ -3809,6 +3940,7 @@ function startToolChangeWizardSend(gcodeLines) {
   toolChangeWizardQueue = gcodeLines.slice();
   toolChangeWizardPointer = 0;
   toolChangeWizardSentBuffer.length = 0;
+  toolChangeWizardDoneCallback = onDrained || null;
   sendToolChangeWizardQ();
   return true;
 }
@@ -3828,6 +3960,15 @@ function routeOkAndAdvance(command) {
   if (toolChangeWizardSentBuffer.length > 0) {
     command = toolChangeWizardSentBuffer.shift();
     sendToolChangeWizardQ();
+    // P10 Tahap 1b-ii Commit 5: fire the completion callback only once
+    // NOTHING is left in flight or queued - sendToolChangeWizardQ() just
+    // above may have immediately refilled toolChangeWizardSentBuffer with
+    // the sequence's next line, which must NOT be mistaken for "done".
+    if (toolChangeWizardSentBuffer.length === 0 && toolChangeWizardPointer >= toolChangeWizardQueue.length && toolChangeWizardDoneCallback) {
+      var doneCallback = toolChangeWizardDoneCallback;
+      toolChangeWizardDoneCallback = null;
+      doneCallback();
+    }
   } else {
     if (status.machine.firmware.type === "grbl") {
       command = sentBuffer.shift();
@@ -3839,6 +3980,141 @@ function routeOkAndAdvance(command) {
     send1Q();
   }
   return command;
+}
+
+// ---------------------------------------------------------------------------
+// P10 Tahap 1b-ii Commit 5: the Fixed Tool Sensor probe sequencer. Runs
+// entirely on startToolChangeWizardSend()/toolChangeWizard* (never touches
+// gcodeQueue/sentBuffer/send1Q() until the very end, when it hands control
+// back). Two separate completion signals drive it, deliberately not unified:
+//   - "ok" (via toolChangeWizardDoneCallback) for plain moves, where
+//     acknowledgement IS completion;
+//   - the [PRB: report (via handleToolSensorProbeResult(), called from the
+//     port data handler below) for the probe itself, where "ok" only means
+//     the line was accepted into the buffer - NOT that the physical probe
+//     move has finished. Treating the two as the same signal would resume
+//     the main job (or apply a compensation value) before the real probe
+//     result is even known.
+//
+// gcode conventions used here are not new inventions: G10 L20 Pn Z<value>
+// (set the CURRENT machine position's work-Z, in WCS n, to <value>) is the
+// same command this app's own probe wizards already use (see
+// app/wizards/probe/holefinder.js, probev2.js) - just with a value computed
+// here instead of hardcoded in a macro string. G38.2 under G91 (relative) is
+// used for the probe itself specifically so this code never has to read or
+// assume the CURRENT work-Z at the sensor - it only ever needs the MACHINE-
+// coordinate probe result from status.machine.probe, which grbl always
+// reports in machine coordinates regardless of G90/G91 or active WCS.
+// ---------------------------------------------------------------------------
+
+// mm above the sensor's recorded (first-tool) contact height to start
+// probing from, and how far (and how fast) to probe down from there. Fixed
+// constants, not yet user-configurable - a v1 limitation like the
+// first-tool-behaviour one above, not an oversight. TOOLSENSOR_PROBE_DISTANCE/
+// FEED match this app's own existing G38.2 Z-25 F100 convention used
+// elsewhere (see holefinder.js/probev2.js) rather than inventing new values.
+var TOOLSENSOR_APPROACH_CLEARANCE = 15;
+var TOOLSENSOR_PROBE_DISTANCE = 25;
+var TOOLSENSOR_PROBE_FEED = 100;
+
+// G54..G59 -> the P argument G10 L20 needs (1..6). Falls back to 1 (G54) for
+// anything unrecognised - should not happen in practice (gotModals() only
+// ever sets one of the six), but G10 L20 with no/invalid P is not something
+// to risk sending to a real controller.
+function toolSensorCoordSysP() {
+  var map = { G54: 1, G55: 2, G56: 3, G57: 4, G58: 5, G59: 6 };
+  return map[status.machine.modals.coordinatesys] || 1;
+}
+
+// The ONLY entry point - wired to the 'startToolSensorProbe' socket event
+// below. Refuses (logs, does nothing else) unless genuinely parked at a
+// fixedToolSensor M6 with a configured sensor location, and never starts a
+// second sequence on top of one already running.
+function startToolSensorProbe() {
+  if (!status.comms.awaitingToolChange || toolChangeMode !== 'fixedToolSensor') {
+    serialLog('error', 'startToolSensorProbe refused: not awaiting a fixedToolSensor tool change');
+    return false;
+  }
+  if (toolSensorProbeState) {
+    serialLog('error', 'startToolSensorProbe refused: a probe sequence is already in progress');
+    return false;
+  }
+  if (!toolChangeSensorLocation) {
+    serialLog('error', 'startToolSensorProbe refused: no tool sensor location configured');
+    io.sockets.emit('data', { command: '[ TOOL SENSOR ]', response: 'Lokasi sensor belum diatur - buka pengaturan Fixed Tool Sensor terlebih dahulu.', type: 'error' });
+    return false;
+  }
+  var loc = toolChangeSensorLocation;
+  var state = {
+    isBaseline: (toolChangeSensorBaseline === null),
+    wcoZSnapshot: status.machine.position.offset.z,
+    coordP: toolSensorCoordSysP(),
+    origWork: {
+      x: status.machine.position.work.x,
+      y: status.machine.position.work.y,
+      z: status.machine.position.work.z
+    },
+    phase: 'awaitingProbeResult'
+  };
+  var approachAndProbe = [
+    'G53 G0 X' + loc.x + ' Y' + loc.y,
+    'G53 G0 Z' + (loc.z + TOOLSENSOR_APPROACH_CLEARANCE),
+    'G91',
+    'G38.2 Z-' + TOOLSENSOR_PROBE_DISTANCE + ' F' + TOOLSENSOR_PROBE_FEED,
+    'G90'
+  ];
+  if (!startToolChangeWizardSend(approachAndProbe)) {
+    io.sockets.emit('data', { command: '[ TOOL SENSOR ]', response: 'Gagal memulai probe - lihat serial.log.', type: 'error' });
+    return false;
+  }
+  toolSensorProbeState = state;
+  return true;
+}
+
+// Called from the [PRB: handler for EVERY probe result, main-job probes
+// (isJob:false console/manual wizards) included - the phase check is what
+// keeps those from being mistaken for this sequence's own probe.
+function handleToolSensorProbeResult(probe) {
+  if (!toolSensorProbeState || toolSensorProbeState.phase !== 'awaitingProbeResult') return;
+  var state = toolSensorProbeState;
+  if (!(probe.state > 0)) {
+    // No contact within TOOLSENSOR_PROBE_DISTANCE - grbl itself alarms for
+    // this (G38.2's own failure behaviour), which the existing Alarm path in
+    // parseFeedback() surfaces and also resets toolSensorProbeState (see
+    // there). Nothing else to do here: awaitingToolChange is left untouched,
+    // so the job stays safely parked rather than silently resuming without
+    // compensation.
+    toolSensorProbeState = null;
+    io.sockets.emit('data', { command: '[ TOOL SENSOR ]', response: 'Probe tidak menyentuh sensor dalam jarak yang ditentukan.', type: 'error' });
+    return;
+  }
+  // Rounded to 4 decimal places - a straight subtraction of two floats here
+  // routinely lands on values like -12.344999999999999 (IEEE754 binary
+  // representation, not a real discrepancy), which would otherwise be
+  // embedded verbatim into every later G10 line for the rest of the job.
+  var workZAtContact = parseFloat((parseFloat(probe.z) - state.wcoZSnapshot).toFixed(4));
+  var lines = [];
+  if (state.isBaseline) {
+    toolChangeSensorBaseline = workZAtContact;
+  } else {
+    lines.push('G10 L20 P' + state.coordP + ' Z' + toolChangeSensorBaseline);
+  }
+  var loc = toolChangeSensorLocation;
+  lines.push('G53 G0 Z' + (loc.z + TOOLSENSOR_APPROACH_CLEARANCE));
+  lines.push('G90 G0 X' + state.origWork.x + ' Y' + state.origWork.y);
+  lines.push('G90 G0 Z' + state.origWork.z);
+  state.phase = 'returning';
+  var finishedBaseline = state.isBaseline;
+  if (!startToolChangeWizardSend(lines, function() {
+    toolSensorProbeState = null;
+    status.comms.awaitingToolChange = false;
+    pendingToolChange = null;
+    io.sockets.emit('data', { command: '[ TOOL SENSOR ]', response: finishedBaseline ? 'Baseline tool pertama tersimpan.' : 'Kompensasi panjang tool diterapkan.', type: 'success' });
+    send1Q();
+  })) {
+    toolSensorProbeState = null;
+    io.sockets.emit('data', { command: '[ TOOL SENSOR ]', response: 'Gagal mengirim gerakan kembali setelah probe - lihat serial.log.', type: 'error' });
+  }
 }
 
 // queue
@@ -3982,6 +4258,9 @@ function send1Q() {
       toolChangeWizardQueue.length = 0;
       toolChangeWizardPointer = 0;
       toolChangeWizardSentBuffer.length = 0;
+      toolChangeWizardDoneCallback = null;
+      toolSensorProbeState = null;
+      toolChangeSensorBaseline = null;
     }
   } else {
     debug_log('Not Connected')
@@ -4472,6 +4751,9 @@ function stop(data) {
     toolChangeWizardQueue.length = 0;
     toolChangeWizardPointer = 0;
     toolChangeWizardSentBuffer.length = 0;
+    toolChangeWizardDoneCallback = null;
+    toolSensorProbeState = null;
+    toolChangeSensorBaseline = null;
   } else {
     debug_log('ERROR: Machine connection not open!');
   }

@@ -40,7 +40,7 @@ function grabSocketHandler(event) {
 // including one nobody has thought of yet (like clearAlarm method 2, once).
 // ============================================================================
 
-test('structural: every "gcodeQueue.length = 0" site also resets ALL SEVEN tool-change state items (Tahap 1a\'s four, plus Tahap 1b-ii\'s wizard-sender trio)', () => {
+test('structural: every "gcodeQueue.length = 0" site also resets ALL TEN tool-change state items (Tahap 1a\'s four, Tahap 1b-ii Commit 3\'s wizard-sender trio, and Commit 5\'s probe-sequencer trio)', () => {
   const lines = INDEX_SRC.split('\n');
   const sites = [];
   lines.forEach((line, i) => { if (/^\s*gcodeQueue\.length\s*=\s*0/.test(line)) sites.push(i); });
@@ -49,7 +49,7 @@ test('structural: every "gcodeQueue.length = 0" site also resets ALL SEVEN tool-
   assert.equal(sites.length, 4, 'expected exactly the 4 known queue-dump sites (stopPort, stop, clearAlarm method 2, send1Q completion) - a different count means either a site was removed or a NEW one was added that this test has not been told to check yet');
 
   for (const i of sites) {
-    const window = lines.slice(Math.max(0, i - 6), i + 24).join('\n');
+    const window = lines.slice(Math.max(0, i - 6), i + 28).join('\n');
     const where = 'index.js line ' + (i + 1) + ' (' + lines[i].trim() + ')';
     assert.match(window, /status\.comms\.awaitingToolChange\s*=\s*false/, where + ' must reset status.comms.awaitingToolChange');
     assert.match(window, /pendingToolChange\s*=\s*null/, where + ' must reset pendingToolChange');
@@ -58,6 +58,9 @@ test('structural: every "gcodeQueue.length = 0" site also resets ALL SEVEN tool-
     assert.match(window, /toolChangeWizardQueue\.length\s*=\s*0/, where + ' must clear toolChangeWizardQueue (Tahap 1b-ii)');
     assert.match(window, /toolChangeWizardPointer\s*=\s*0/, where + ' must reset toolChangeWizardPointer (Tahap 1b-ii)');
     assert.match(window, /toolChangeWizardSentBuffer\.length\s*=\s*0/, where + ' must clear toolChangeWizardSentBuffer (Tahap 1b-ii)');
+    assert.match(window, /toolChangeWizardDoneCallback\s*=\s*null/, where + ' must clear toolChangeWizardDoneCallback (Tahap 1b-ii Commit 5)');
+    assert.match(window, /toolSensorProbeState\s*=\s*null/, where + ' must clear toolSensorProbeState (Tahap 1b-ii Commit 5)');
+    assert.match(window, /toolChangeSensorBaseline\s*=\s*null/, where + ' must clear toolChangeSensorBaseline (Tahap 1b-ii Commit 5)');
   }
 });
 
@@ -80,7 +83,7 @@ function harness() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uc-tc-reset-'));
   const ctx = {
     gcodeQueue: [], queuePointer: 0, sentBuffer: [], statusLoop: null, queueCounter: null,
-    toolChangeQIndexes: new Map(), toolChangeWizardQueue: [], toolChangeWizardPointer: 0, toolChangeWizardSentBuffer: [], VALID_TOOLCHANGE_MODES: ['ignore', 'fixedToolSensor'], pendingToolChange: null, toolChangeWizardEmitted: false,
+    toolChangeQIndexes: new Map(), toolChangeWizardQueue: [], toolChangeWizardPointer: 0, toolChangeWizardSentBuffer: [], toolChangeWizardDoneCallback: null, VALID_TOOLCHANGE_MODES: ['ignore', 'fixedToolSensor'], VALID_TOOLSENSOR_FIRST_BEHAVIOURS: ['always-wizard', 'always-probe', 'prompt'], pendingToolChange: null, toolChangeWizardEmitted: false, toolChangeMode: 'pause', toolChangeSensorLocation: null, toolChangeSensorFirstBehaviour: 'always-wizard', toolChangeSensorBaseline: null, toolSensorProbeState: null,
     status: {
       comms: { connectionStatus: 2, blocked: false, paused: false, awaitingToolChange: false, runStatus: 'Idle', queue: 0, alarm: '', interfaces: { type: 'usb' } },
       machine: { modals: {}, firmware: { type: 'grbl', platform: 'grbl', rxBufferSize: 254, blockBufferSize: '35', version: '', date: '', buffer: '' }, tool: { nexttool: {} } },
@@ -102,7 +105,7 @@ function harness() {
   vm.runInContext(
     BUFFER_VARS + MODAL_VARS +
       ['isToolChangeLine', 'toolChangeToolNumber', 'addQToEnd', 'addQRealtime', 'send1Q', 'BufferSpace', 'machineSend',
-        'runJob', 'announceJobStopped', 'stopPort', 'stop', 'pause', 'unpause']
+        'isValidSensorLocation', 'runJob', 'announceJobStopped', 'stopPort', 'stop', 'pause', 'unpause']
         .map(grabFunction).join('\n'),
     ctx
   );
@@ -132,6 +135,9 @@ function assertFullyReset(ctx, where) {
   assert.equal(ctx.toolChangeWizardQueue.length, 0, where + ': toolChangeWizardQueue (Tahap 1b-ii)');
   assert.equal(ctx.toolChangeWizardPointer, 0, where + ': toolChangeWizardPointer (Tahap 1b-ii)');
   assert.equal(ctx.toolChangeWizardSentBuffer.length, 0, where + ': toolChangeWizardSentBuffer (Tahap 1b-ii)');
+  assert.equal(ctx.toolChangeWizardDoneCallback, null, where + ': toolChangeWizardDoneCallback (Tahap 1b-ii Commit 5)');
+  assert.equal(ctx.toolSensorProbeState, null, where + ': toolSensorProbeState (Tahap 1b-ii Commit 5)');
+  assert.equal(ctx.toolChangeSensorBaseline, null, where + ': toolChangeSensorBaseline (Tahap 1b-ii Commit 5)');
 }
 
 test('stopPort() while parked at a tool change resets all four items', () => {

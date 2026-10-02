@@ -37,7 +37,7 @@ function harness() {
   const emitted = [];
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uc-stopjog-'));
   const ctx = {
-    gcodeQueue: [], queuePointer: 0, sentBuffer: [], queueCounter: null, toolChangeQIndexes: new Map(), toolChangeWizardQueue: [], toolChangeWizardPointer: 0, toolChangeWizardSentBuffer: [], VALID_TOOLCHANGE_MODES: ['ignore', 'fixedToolSensor'],
+    gcodeQueue: [], queuePointer: 0, sentBuffer: [], queueCounter: null, toolChangeQIndexes: new Map(), toolChangeWizardQueue: [], toolChangeWizardPointer: 0, toolChangeWizardSentBuffer: [], VALID_TOOLCHANGE_MODES: ['ignore', 'fixedToolSensor'], VALID_TOOLSENSOR_FIRST_BEHAVIOURS: ['always-wizard', 'always-probe', 'prompt'],
     status: {
       comms: { connectionStatus: 2, blocked: false, paused: false, runStatus: 'Idle', queue: 0, alarm: '', interfaces: { type: 'usb' } },
       machine: { modals: {}, firmware: { type: 'grbl', platform: 'grbl', rxBufferSize: 254, blockBufferSize: '35', version: '', date: '', buffer: '' }, tool: { nexttool: {} } },
@@ -54,7 +54,7 @@ function harness() {
     getPlannerBlocks: () => 35,
   });
   vm.createContext(ctx);
-  vm.runInContext(MODAL_VARS + ['isToolChangeLine', 'toolChangeToolNumber', 'addQToEnd', 'addQRealtime', 'send1Q', 'BufferSpace', 'machineSend', 'runJob', 'announceJobStopped', 'stop'].map(grabFunction).join('\n'), ctx);
+  vm.runInContext(MODAL_VARS + ['isToolChangeLine', 'toolChangeToolNumber', 'addQToEnd', 'addQRealtime', 'send1Q', 'BufferSpace', 'machineSend', 'isValidSensorLocation', 'runJob', 'announceJobStopped', 'stop'].map(grabFunction).join('\n'), ctx);
   const h = {
     ctx, written, emitted,
     // "ok" for the oldest line in flight

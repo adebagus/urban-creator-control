@@ -55,7 +55,7 @@ function harness(rxBufferSize) {
   const ctx = {
     gcodeQueue: [], queuePointer: 0, sentBuffer: [], statusLoop: null, queueCounter: null,
     toolChangeQIndexes: new Map(), pendingToolChange: null, toolChangeWizardEmitted: false, toolChangeMode: 'pause',
-    toolChangeWizardQueue: [], toolChangeWizardPointer: 0, toolChangeWizardSentBuffer: [], VALID_TOOLCHANGE_MODES: ['ignore', 'fixedToolSensor'],
+    toolChangeWizardQueue: [], toolChangeWizardPointer: 0, toolChangeWizardSentBuffer: [], toolChangeWizardDoneCallback: null, VALID_TOOLCHANGE_MODES: ['ignore', 'fixedToolSensor'], VALID_TOOLSENSOR_FIRST_BEHAVIOURS: ['always-wizard', 'always-probe', 'prompt'],
     fluidncConfig: '',
     status: {
       comms: { connectionStatus: 2, blocked: false, paused: false, awaitingToolChange: false, runStatus: 'Idle', queue: 0, alarm: '', interfaces: { type: 'usb' } },
@@ -75,7 +75,7 @@ function harness(rxBufferSize) {
   vm.createContext(ctx);
   vm.runInContext(
     BUFFER_VARS + MODAL_VARS +
-      ['isToolChangeLine', 'toolChangeToolNumber', 'addQToEnd', 'send1Q', 'BufferSpace', 'machineSend', 'runJob',
+      ['isToolChangeLine', 'toolChangeToolNumber', 'addQToEnd', 'send1Q', 'BufferSpace', 'machineSend', 'isValidSensorLocation', 'runJob',
         'toolChangeWizardBufferSpace', 'machineSendToolChangeWizard', 'sendToolChangeWizardQ',
         'startToolChangeWizardSend', 'routeOkAndAdvance']
         .map(grabFunction).join('\n'),
