@@ -1206,6 +1206,20 @@
                       <span class="fas fa-fw fa-arrows-alt-v icon fg-orange"></span>TCZ
                     </button>
                   </div>
+
+                  <!-- P10 Tahap 1b-i: software tool-change mode (M6 handling), separate from the
+                       firmware-native ATC/TLS/TCZ row above it (those are grblHAL $341, UC-100-only).
+                       This applies to ANY grbl/grblHAL controller. Persisted per-installation in
+                       localStorage (same pattern as unitsMode in app/js/jog.js), read fresh into
+                       each runJob()/"Start from Line" request - see app/js/toolchange.js. -->
+                  <div id="toolChangeModeRow" class="text-center mt-2" style="font-size: 11px;">
+                    <span class="fg-gray">Tool Change:</span><br>
+                    <select data-role="select" data-filter="false" id="toolChangeMode" onchange="setToolChangeMode(this.value)"
+                      title="How M6 (tool change) lines are handled while running a job. Pause: stop and show a wizard at every M6. Ignore: skip M6 automatically, no wizard - for jobs you already handle tool changes for some other way.">
+                      <option value="pause" selected>Pause</option>
+                      <option value="ignore">Ignore</option>
+                    </select>
+                  </div>
                 </div>
               </div>
             </div>

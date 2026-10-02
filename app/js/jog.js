@@ -227,6 +227,7 @@ $(document).ready(function() {
   });
 
   restoreUnitsMode();
+  restoreToolChangeMode();
 
   $(document).mousedown(function(e) {
     safeToUpdateSliders = false;

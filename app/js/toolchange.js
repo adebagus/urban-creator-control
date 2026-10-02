@@ -1,6 +1,29 @@
 var sectionNum = 0;
 var toolchanges = [];
 
+// P10 Tahap 1b-i: the client's chosen tool-change mode for M6 handling
+// (separate from the firmware-native ATC/$341 toggle above it in the UI).
+// 'pause' is the only validated/shipped behaviour so far (Tahap 1a) and is
+// the safe default for a fresh install or an unrecognised saved value -
+// same "repair on read" pattern as restoreUnitsMode() in app/js/jog.js.
+var toolChangeMode = 'pause';
+
+function setToolChangeMode(mode) {
+  toolChangeMode = (mode === 'ignore') ? 'ignore' : 'pause';
+  try {
+    localStorage.setItem('toolChangeMode', toolChangeMode);
+  } catch (e) {}
+}
+
+function restoreToolChangeMode() {
+  var saved = null;
+  try {
+    saved = localStorage.getItem('toolChangeMode');
+  } catch (e) {}
+  setToolChangeMode(saved); // also (re)writes the saved value, repairing an unrecognised one
+  $('#toolChangeMode').val(toolChangeMode);
+}
+
 // Skeleton script to replace the Visualiser cone with an STL of an endmill
 function replaceConeWith(toolid) {
   if (toolid = "635mmendmill") {
