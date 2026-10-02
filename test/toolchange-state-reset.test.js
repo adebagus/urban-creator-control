@@ -40,7 +40,7 @@ function grabSocketHandler(event) {
 // including one nobody has thought of yet (like clearAlarm method 2, once).
 // ============================================================================
 
-test('structural: every "gcodeQueue.length = 0" site also resets ALL FOUR tool-change state items', () => {
+test('structural: every "gcodeQueue.length = 0" site also resets ALL SEVEN tool-change state items (Tahap 1a\'s four, plus Tahap 1b-ii\'s wizard-sender trio)', () => {
   const lines = INDEX_SRC.split('\n');
   const sites = [];
   lines.forEach((line, i) => { if (/^\s*gcodeQueue\.length\s*=\s*0/.test(line)) sites.push(i); });
@@ -49,12 +49,15 @@ test('structural: every "gcodeQueue.length = 0" site also resets ALL FOUR tool-c
   assert.equal(sites.length, 4, 'expected exactly the 4 known queue-dump sites (stopPort, stop, clearAlarm method 2, send1Q completion) - a different count means either a site was removed or a NEW one was added that this test has not been told to check yet');
 
   for (const i of sites) {
-    const window = lines.slice(Math.max(0, i - 6), i + 20).join('\n');
+    const window = lines.slice(Math.max(0, i - 6), i + 24).join('\n');
     const where = 'index.js line ' + (i + 1) + ' (' + lines[i].trim() + ')';
     assert.match(window, /status\.comms\.awaitingToolChange\s*=\s*false/, where + ' must reset status.comms.awaitingToolChange');
     assert.match(window, /pendingToolChange\s*=\s*null/, where + ' must reset pendingToolChange');
     assert.match(window, /toolChangeWizardEmitted\s*=\s*false/, where + ' must reset toolChangeWizardEmitted');
     assert.match(window, /toolChangeQIndexes\.clear\(\)/, where + ' must clear toolChangeQIndexes');
+    assert.match(window, /toolChangeWizardQueue\.length\s*=\s*0/, where + ' must clear toolChangeWizardQueue (Tahap 1b-ii)');
+    assert.match(window, /toolChangeWizardPointer\s*=\s*0/, where + ' must reset toolChangeWizardPointer (Tahap 1b-ii)');
+    assert.match(window, /toolChangeWizardSentBuffer\.length\s*=\s*0/, where + ' must clear toolChangeWizardSentBuffer (Tahap 1b-ii)');
   }
 });
 
@@ -77,7 +80,7 @@ function harness() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uc-tc-reset-'));
   const ctx = {
     gcodeQueue: [], queuePointer: 0, sentBuffer: [], statusLoop: null, queueCounter: null,
-    toolChangeQIndexes: new Map(), pendingToolChange: null, toolChangeWizardEmitted: false,
+    toolChangeQIndexes: new Map(), toolChangeWizardQueue: [], toolChangeWizardPointer: 0, toolChangeWizardSentBuffer: [], pendingToolChange: null, toolChangeWizardEmitted: false,
     status: {
       comms: { connectionStatus: 2, blocked: false, paused: false, awaitingToolChange: false, runStatus: 'Idle', queue: 0, alarm: '', interfaces: { type: 'usb' } },
       machine: { modals: {}, firmware: { type: 'grbl', platform: 'grbl', rxBufferSize: 254, blockBufferSize: '35', version: '', date: '', buffer: '' }, tool: { nexttool: {} } },
@@ -126,6 +129,9 @@ function assertFullyReset(ctx, where) {
   assert.equal(ctx.pendingToolChange, null, where + ': pendingToolChange');
   assert.equal(ctx.toolChangeWizardEmitted, false, where + ': toolChangeWizardEmitted');
   assert.equal(ctx.toolChangeQIndexes.size, 0, where + ': toolChangeQIndexes');
+  assert.equal(ctx.toolChangeWizardQueue.length, 0, where + ': toolChangeWizardQueue (Tahap 1b-ii)');
+  assert.equal(ctx.toolChangeWizardPointer, 0, where + ': toolChangeWizardPointer (Tahap 1b-ii)');
+  assert.equal(ctx.toolChangeWizardSentBuffer.length, 0, where + ': toolChangeWizardSentBuffer (Tahap 1b-ii)');
 }
 
 test('stopPort() while parked at a tool change resets all four items', () => {

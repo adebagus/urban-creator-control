@@ -610,6 +610,20 @@ var toolChangeWizardEmitted = false;
 // 'ignore' job immediately followed by one 'pause' job, with no reset
 // in between, and checks the second one is not left running 'ignore').
 var toolChangeMode = 'pause';
+// P10 Tahap 1b-ii: a SEPARATE queue/pointer/sent-buffer for Fixed Tool
+// Sensor's automatic probe gcode - proven necessary, not a style choice: a
+// vm-harness test (the investigation before this commit) showed that
+// routing this gcode through runJob()/gcodeQueue/send1Q() WHILE the main
+// job is parked at awaitingToolChange=true causes two confirmed bugs -
+// toolChangeQIndexes.clear() silently wipes detection of any LATER M6 in
+// the same job, and send1Q()'s own gate (the thing holding the main job)
+// ALSO holds the wizard's own gcode hostage forever (a permanent deadlock,
+// not just a slowdown). This trio never touches gcodeQueue/queuePointer/
+// sentBuffer/toolChangeQIndexes, and vice versa - see sendToolChangeWizardQ()
+// and the "ok" routing in the port's data handler.
+var toolChangeWizardQueue = [];
+var toolChangeWizardPointer = 0;
+var toolChangeWizardSentBuffer = [];
 var queuePointer = 0;
 var statusLoop;
 var frontEndUpdateLoop, sysinfoUpdateLoop
@@ -1842,15 +1856,7 @@ io.on("connection", function(socket) {
           } else if (data.indexOf("ok") === 0) { // Got an OK so we are clear to send
             io.sockets.emit('ok', command); // added per #325
             // debug_log("OK FOUND")
-            if (status.machine.firmware.type === "grbl") {
-              // debug_log('got OK from ' + command)
-              command = sentBuffer.shift();
-            }
-            if (command == "$CD") {
-              io.sockets.emit('fluidncConfig', fluidncConfig);
-            }
-            status.comms.blocked = false;
-            send1Q();
+            command = routeOkAndAdvance(command);
           } else if (data.indexOf('ALARM') === 0) { //} || data.indexOf('HALTED') === 0) {
             debug_log("ALARM:  " + data)
             status.comms.connectionStatus = 5;
@@ -2585,6 +2591,9 @@ io.on("connection", function(socket) {
           pendingToolChange = null;
           toolChangeWizardEmitted = false;
           toolChangeQIndexes.clear();
+          toolChangeWizardQueue.length = 0;
+          toolChangeWizardPointer = 0;
+          toolChangeWizardSentBuffer.length = 0;
           debug_log('Clearing Lockout');
           switch (status.machine.firmware.type) {
             case 'grbl':
@@ -2898,6 +2907,9 @@ function stopPort() {
   pendingToolChange = null;
   toolChangeWizardEmitted = false;
   toolChangeQIndexes.clear();
+  toolChangeWizardQueue.length = 0;
+  toolChangeWizardPointer = 0;
+  toolChangeWizardSentBuffer.length = 0;
 
   if (typeof port === 'undefined' || !port) {
     return; // never connected - nothing to close
@@ -3678,6 +3690,139 @@ function laserTest(data) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// P10 Tahap 1b-ii: Fixed Tool Sensor's own gcode sender - fully independent
+// of the main job's gcodeQueue/queuePointer/sentBuffer/send1Q() (see the
+// comment on toolChangeWizardQueue's declaration for why this has to be
+// separate). Deliberately mirrors send1Q()'s own structure (one line per
+// "ok", respect the RX buffer) rather than reusing it, since reusing it is
+// exactly what caused the two bugs the investigation found.
+// ---------------------------------------------------------------------------
+
+// Same formula as BufferSpace('grbl'), but against the wizard's OWN
+// sentBuffer - never the main job's. Kept as its own function (not
+// BufferSpace() with a parameter) so neither can accidentally read the
+// other's state by a future refactor mistake.
+function toolChangeWizardBufferSpace() {
+  var total = 0;
+  for (var i = 0; i < toolChangeWizardSentBuffer.length; i++) {
+    total += toolChangeWizardSentBuffer[i].length;
+  }
+  if (status.machine.firmware.rxBufferSize > 0) {
+    return (status.machine.firmware.rxBufferSize - 1) - total;
+  }
+  return status.machine.firmware.platform == "grblHAL" ? GRBLHAL_RX_BUFFER_SIZE - total : GRBL_RX_BUFFER_SIZE - total;
+}
+
+// Minimal tulis-port - deliberately NOT machineSend(): that function reads
+// gcodeQueue/queuePointer to emit "queueCount" (the main job's progress),
+// which would show confusing/wrong numbers during a probe sequence that has
+// nothing to do with the main job's queue. No T-word tracking either - not
+// relevant to probe gcode.
+function machineSendToolChangeWizard(gcode) {
+  debug_log("WIZARD SENDING: " + gcode);
+  if (port.isOpen) {
+    port.write(gcode);
+    debug_log("WIZARD SENT: " + gcode);
+  }
+}
+
+function sendToolChangeWizardQ() {
+  if (status.comms.connectionStatus > 0 && (toolChangeWizardQueue.length - toolChangeWizardPointer) > 0) {
+    var spaceLeft = toolChangeWizardBufferSpace();
+    var gcode = toolChangeWizardQueue[toolChangeWizardPointer];
+    if (gcode.length < spaceLeft) {
+      toolChangeWizardPointer++;
+      toolChangeWizardSentBuffer.push(gcode);
+      machineSendToolChangeWizard(gcode + '\n');
+    }
+    // P10: deliberately no "blocked" flag/retry-on-timer here for the
+    // buffer-full case - proven unnecessary (not just assumed) by the
+    // investigation before this commit: every gcode line THIS sender is
+    // ever given is validated against an EMPTY buffer's capacity before
+    // sending starts at all (see startToolChangeWizardSend()), so a line
+    // can only ever be blocked here by OTHER lines still in flight - and
+    // those are guaranteed to free the needed space once acked, retried via
+    // the "ok" routing below, never by anything stuck waiting with nothing
+    // outstanding to ack. See test/toolchange-wizard-queue-separation.test.js
+    // for the proof (both the forced-deadlock case this guards against, and
+    // the realistic-gcode case showing it never gets close to the limit).
+  }
+}
+
+// The ONLY way to start the wizard sender - never push to
+// toolChangeWizardQueue directly. Returns false (refuses, sends nothing) if
+// either precondition is not met:
+//   - awaitingToolChange must already be true (nothing to probe for otherwise)
+//   - sentBuffer (the MAIN job's) must already be fully drained - proven
+//     necessary by the investigation: forcing both sentBuffer and
+//     toolChangeWizardSentBuffer to hold something at the same time showed
+//     the "ok" routing below silently strands the main job's entry forever,
+//     corrupting jobRecovery's unacked-line count for the rest of the
+//     session with no error surfaced. Refusing here instead turns that into
+//     a loud, logged refusal that can never happen in normal operation (the
+//     wizard is only ever offered once Commit 3 of Tahap 1a's own Idle+
+//     drained check already confirms sentBuffer is empty) - this is
+//     defence-in-depth for if that invariant is ever broken by a future
+//     change, not something expected to trigger today.
+//   - every line must individually fit in a COMPLETELY EMPTY wizard buffer -
+//     proven necessary: a line longer than that can never be sent at all
+//     (nothing to retry against), a real, reproduced deadlock for an
+//     artificially tiny buffer + long line, even though no realistic probe
+//     gcode line comes remotely close (worst case ~28 bytes against a
+//     minimum real buffer of 126).
+function startToolChangeWizardSend(gcodeLines) {
+  if (!status.comms.awaitingToolChange) {
+    serialLog('error', 'startToolChangeWizardSend refused: not awaiting a tool change');
+    return false;
+  }
+  if (sentBuffer.length > 0) {
+    serialLog('error', 'startToolChangeWizardSend refused: main job sentBuffer not drained (length ' + sentBuffer.length + ')');
+    return false;
+  }
+  var emptyBufferSpace = toolChangeWizardBufferSpace(); // toolChangeWizardSentBuffer is still empty here
+  for (var i = 0; i < gcodeLines.length; i++) {
+    if (gcodeLines[i].length >= emptyBufferSpace) {
+      serialLog('error', 'startToolChangeWizardSend refused: line ' + (i + 1) + ' (' + gcodeLines[i].length +
+        ' bytes) does not fit even in a fully empty buffer (' + emptyBufferSpace + ' bytes)');
+      return false;
+    }
+  }
+  toolChangeWizardQueue = gcodeLines.slice();
+  toolChangeWizardPointer = 0;
+  toolChangeWizardSentBuffer.length = 0;
+  sendToolChangeWizardQ();
+  return true;
+}
+
+// P10 Tahap 1b-ii: the routing decision from the serial port's "ok" handler,
+// extracted into its own function so it can be tested directly
+// (grabFunction('routeOkAndAdvance')) without reconstructing the much larger
+// parser.on("data", ...) handler it lives in. Routes to whichever sender
+// genuinely has something outstanding - the two never have something at the
+// same time in normal operation (see startToolChangeWizardSend's comment),
+// so this is never ambiguous in practice, but is written so there is no
+// shared state either side could be confused by. Takes and returns `command`
+// because the ORIGINAL (pre-Tahap-1b-ii) code reassigned it from
+// sentBuffer.shift() for logging further down in the same handler - this
+// keeps that exact behaviour for the main-job branch, byte for byte.
+function routeOkAndAdvance(command) {
+  if (toolChangeWizardSentBuffer.length > 0) {
+    command = toolChangeWizardSentBuffer.shift();
+    sendToolChangeWizardQ();
+  } else {
+    if (status.machine.firmware.type === "grbl") {
+      command = sentBuffer.shift();
+    }
+    if (command == "$CD") {
+      io.sockets.emit('fluidncConfig', fluidncConfig);
+    }
+    status.comms.blocked = false;
+    send1Q();
+  }
+  return command;
+}
+
 // queue
 function BufferSpace(firmware) {
   var total = 0;
@@ -3812,6 +3957,9 @@ function send1Q() {
       pendingToolChange = null;
       toolChangeWizardEmitted = false;
       toolChangeQIndexes.clear();
+      toolChangeWizardQueue.length = 0;
+      toolChangeWizardPointer = 0;
+      toolChangeWizardSentBuffer.length = 0;
     }
   } else {
     debug_log('Not Connected')
@@ -4299,6 +4447,9 @@ function stop(data) {
     pendingToolChange = null;
     toolChangeWizardEmitted = false;
     toolChangeQIndexes.clear();
+    toolChangeWizardQueue.length = 0;
+    toolChangeWizardPointer = 0;
+    toolChangeWizardSentBuffer.length = 0;
   } else {
     debug_log('ERROR: Machine connection not open!');
   }

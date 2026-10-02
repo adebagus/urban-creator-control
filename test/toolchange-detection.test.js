@@ -75,7 +75,7 @@ const MODAL_VARS =
 function jobHarness() {
   const written = [];
   const jobCtx = {
-    gcodeQueue: [], queuePointer: 0, sentBuffer: [], toolChangeQIndexes: new Map(),
+    gcodeQueue: [], queuePointer: 0, sentBuffer: [], toolChangeQIndexes: new Map(), toolChangeWizardQueue: [], toolChangeWizardPointer: 0, toolChangeWizardSentBuffer: [],
     statusLoop: null, queueCounter: null,
     status: {
       comms: { connectionStatus: 2, blocked: false, paused: false, queue: 0, runStatus: 'Idle' },
