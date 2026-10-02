@@ -3719,10 +3719,35 @@ function send1Q() {
             // jobRecovery.js) correct with zero changes there: once the
             // REST of sentBuffer drains, it naturally lands on the line right
             // after this M6, which is exactly the correct resume point.
-            pendingToolChange = toolChangeQIndexes.get(queuePointer);
             queuePointer++;
-            status.comms.awaitingToolChange = true;
-            toolChangeWizardEmitted = false;
+            if (toolChangeMode === 'ignore') {
+              // Tahap 1b-i: M6 is still never sent (the skip above already
+              // guaranteed that - same prerequisite for every mode), but
+              // there is no wizard and nothing is waiting on an "ok" for the
+              // line just skipped, so carry on immediately. setImmediate
+              // (not a direct recursive call) so a pathological file with
+              // many consecutive M6 lines can never grow the call stack -
+              // each skip is its own fresh stack, however many there are.
+              //
+              // Guarded on gcodeQueue.length > 0: if this M6 was the LAST
+              // queue entry, the completion check a few lines below (after
+              // this switch) already runs SYNCHRONOUSLY in this same call -
+              // awaitingToolChange is never set in Ignore mode, so nothing
+              // stops it - and dumps the queue before this deferred call
+              // even fires. Without this guard that leaves a stray
+              // send1Q() call to run moments later against an
+              // already-completed, already-EMPTY queue, which the
+              // completion check cannot tell apart from "a trivial job with
+              // nothing in it" and reports as a second, bogus FAILED
+              // completion. See test/toolchange-mode-send1q.test.js.
+              setImmediate(function() {
+                if (gcodeQueue.length > 0) send1Q();
+              });
+            } else {
+              pendingToolChange = toolChangeQIndexes.get(queuePointer - 1);
+              status.comms.awaitingToolChange = true;
+              toolChangeWizardEmitted = false;
+            }
           } else {
             spaceLeft = BufferSpace('grbl');
 
