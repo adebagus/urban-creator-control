@@ -4039,6 +4039,21 @@ function startToolSensorProbe() {
     serialLog('error', 'startToolSensorProbe refused: a probe sequence is already in progress');
     return false;
   }
+  // P10 Tahap 1b-ii, post-Commit-6 hardening: the sensor location is stored
+  // in MACHINE coordinates (G53), which are only meaningful relative to the
+  // controller's homed reference - if the machine has not been homed since
+  // power-up/reset, G53 still accepts and executes the move, just against
+  // whatever arbitrary origin it currently has, silently landing somewhere
+  // other than the physical sensor. Client-side this mirrors the $20 guard
+  // (disable the button) - but unlike $20 (a firmware setting this server
+  // stays stateless about), homedRecently is already tracked server-side
+  // (parseFeedback()/gotModals()), so refusing here too is real defence in
+  // depth, not just trusting the client disabled the button.
+  if (!status.machine.modals.homedRecently) {
+    serialLog('error', 'startToolSensorProbe refused: machine has not been homed recently');
+    io.sockets.emit('data', { command: '[ TOOL SENSOR ]', response: 'Home mesin dulu sebelum menggunakan Fixed Tool Sensor.', type: 'error' });
+    return false;
+  }
   if (!toolChangeSensorLocation) {
     serialLog('error', 'startToolSensorProbe refused: no tool sensor location configured');
     io.sockets.emit('data', { command: '[ TOOL SENSOR ]', response: 'Lokasi sensor belum diatur - buka pengaturan Fixed Tool Sensor terlebih dahulu.', type: 'error' });

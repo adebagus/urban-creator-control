@@ -30,7 +30,7 @@ const VARS = [
   TOOLCHANGE.match(/var TOOLSENSOR_FIRST_BEHAVIOURS = \[[^\]]*\];\n/)[0],
   TOOLCHANGE.match(/var TOOLSENSOR_FIRST_BEHAVIOUR_DEFAULT = [^\n]*\n/)[0],
 ].join('');
-const FUNCS = ['isSoftLimitsEnabledForToolSensor', 'getToolSensorLocation', 'setToolSensorLocation',
+const FUNCS = ['isSoftLimitsEnabledForToolSensor', 'isHomedForToolSensor', 'getToolSensorLocation', 'setToolSensorLocation',
   'getToolSensorFirstBehaviour', 'setToolSensorFirstBehaviour', 'captureToolSensorLocation',
   'toolSensorLocationText', 'showToolSensorSettings'];
 
@@ -51,7 +51,10 @@ function boot(opts = {}) {
   const env = { storage: opts.storage || {}, dialogs: [], clicks: {}, changes: {} };
   const ctx = {
     grblParams: 'grblParams' in opts ? opts.grblParams : { $20: 1 },
-    laststatus: 'laststatus' in opts ? opts.laststatus : { machine: { position: { work: { x: 1, y: 2, z: 3 }, offset: { x: 0, y: 0, z: 0 } } } },
+    // homedRecently: true by default so tests NOT about homing keep testing
+    // whatever they were already testing in isolation - same reasoning as
+    // defaulting grblParams.$20 to 1 above.
+    laststatus: 'laststatus' in opts ? opts.laststatus : { machine: { position: { work: { x: 1, y: 2, z: 3 }, offset: { x: 0, y: 0, z: 0 } }, modals: { homedRecently: true } } },
     localStorage: {
       getItem: (k) => { if (opts.throwOnRead) throw new Error('blocked'); return Object.prototype.hasOwnProperty.call(env.storage, k) ? env.storage[k] : null; },
       setItem: (k, v) => { if (opts.throwOnWrite) throw new Error('blocked'); env.storage[k] = String(v); },
@@ -88,7 +91,7 @@ test('captureToolSensorLocation(): REFUSES (returns null, saves nothing) when So
 test('captureToolSensorLocation(): with Soft Limits on, captures MACHINE coordinates (work + offset), not work coordinates alone', () => {
   const e = boot({
     grblParams: { $20: 1 },
-    laststatus: { machine: { position: { work: { x: 10, y: 20, z: -5 }, offset: { x: 0.1, y: 0.2, z: 0.3 } } } },
+    laststatus: { machine: { position: { work: { x: 10, y: 20, z: -5 }, offset: { x: 0.1, y: 0.2, z: 0.3 } }, modals: { homedRecently: true } } },
   });
   const loc = e.ctx.captureToolSensorLocation();
   assertLoc(loc, { x: 10.1, y: 20.2, z: -4.7 });
@@ -99,6 +102,27 @@ test('captureToolSensorLocation(): no live status yet (never connected) refuses 
   const e = boot({ grblParams: { $20: 1 }, laststatus: undefined });
   assert.doesNotThrow(() => e.ctx.captureToolSensorLocation());
   assert.equal(e.ctx.captureToolSensorLocation(), null);
+});
+
+// --------------------------------------------------------------------------- homing enforcement (post-Commit-6)
+
+test('isHomedForToolSensor(): true only when laststatus.machine.modals.homedRecently is exactly true', () => {
+  assert.equal(boot({ laststatus: { machine: { modals: { homedRecently: true } } } }).ctx.isHomedForToolSensor(), true);
+  assert.equal(boot({ laststatus: { machine: { modals: { homedRecently: false } } } }).ctx.isHomedForToolSensor(), false);
+  assert.equal(boot({ laststatus: { machine: { modals: {} } } }).ctx.isHomedForToolSensor(), false, 'missing field - never homed this session');
+  assert.equal(boot({ laststatus: { machine: {} } }).ctx.isHomedForToolSensor(), false, 'no modals at all');
+  assert.equal(boot({ laststatus: undefined }).ctx.isHomedForToolSensor(), false, 'never connected');
+  assert.equal(boot({ laststatus: { machine: { modals: { homedRecently: 1 } } } }).ctx.isHomedForToolSensor(), false, 'truthy but not literally true must not pass');
+});
+
+test('captureToolSensorLocation(): REFUSES (returns null, saves nothing) when the machine has not been homed - enforced, not just documented, same as $20', () => {
+  const e = boot({
+    grblParams: { $20: 1 },
+    laststatus: { machine: { position: { work: { x: 1, y: 2, z: 3 }, offset: { x: 0, y: 0, z: 0 } }, modals: { homedRecently: false } } },
+  });
+  const result = e.ctx.captureToolSensorLocation();
+  assert.equal(result, null);
+  assert.equal(e.storage.toolSensorLocation, undefined, 'nothing was saved');
 });
 
 // --------------------------------------------------------------------------- getToolSensorLocation()
@@ -161,6 +185,28 @@ test('showToolSensorSettings(): with Soft Limits OFF, the capture button IS disa
   assert.match(e.dialogs[0].content, /Aktifkan Soft Limits \(\$20\)/);
 });
 
+test('showToolSensorSettings(): with Soft Limits ON but NOT homed, the capture button IS disabled and a homing warning is shown', () => {
+  const e = boot({ grblParams: { $20: 1 }, laststatus: { machine: { position: {}, modals: { homedRecently: false } } } });
+  e.ctx.showToolSensorSettings();
+  assert.match(e.dialogs[0].content, /id="captureToolSensorBtn"[^>]*disabled/);
+  assert.match(e.dialogs[0].content, /Home mesin dulu/);
+  assert.ok(!/Aktifkan Soft Limits/.test(e.dialogs[0].content), 'Soft Limits is fine here - must not show the WRONG warning');
+});
+
+test('showToolSensorSettings(): both Soft Limits OFF and not homed - disabled, and the Soft Limits message takes priority (not a silent pick)', () => {
+  const e = boot({ grblParams: { $20: 0 }, laststatus: { machine: { position: {}, modals: { homedRecently: false } } } });
+  e.ctx.showToolSensorSettings();
+  assert.match(e.dialogs[0].content, /id="captureToolSensorBtn"[^>]*disabled/);
+  assert.match(e.dialogs[0].content, /Aktifkan Soft Limits \(\$20\)/);
+});
+
+test('showToolSensorSettings(): both Soft Limits ON and homed - button enabled, no warning at all', () => {
+  const e = boot({ grblParams: { $20: 1 }, laststatus: { machine: { position: {}, modals: { homedRecently: true } } } });
+  e.ctx.showToolSensorSettings();
+  assert.ok(!/id="captureToolSensorBtn"[^>]*disabled/.test(e.dialogs[0].content), e.dialogs[0].content);
+  assert.ok(!/Aktifkan Soft Limits/.test(e.dialogs[0].content) && !/Home mesin dulu/.test(e.dialogs[0].content));
+});
+
 test('showToolSensorSettings(): shows "Belum diatur / Not set" when no location is saved', () => {
   const e = boot({ storage: {} });
   e.ctx.showToolSensorSettings();
@@ -182,7 +228,7 @@ test('showToolSensorSettings(): the first-tool-behaviour select has exactly the 
 });
 
 test('showToolSensorSettings(): clicking the capture button updates the displayed text live', () => {
-  const e = boot({ grblParams: { $20: 1 }, laststatus: { machine: { position: { work: { x: 5, y: 5, z: 5 }, offset: { x: 0, y: 0, z: 0 } } } } });
+  const e = boot({ grblParams: { $20: 1 }, laststatus: { machine: { position: { work: { x: 5, y: 5, z: 5 }, offset: { x: 0, y: 0, z: 0 } }, modals: { homedRecently: true } } } });
   e.ctx.showToolSensorSettings();
   assert.ok(e.changes['#captureToolSensorBtn'] && e.changes['#captureToolSensorBtn'].click, 'a click handler was registered');
   e.changes['#captureToolSensorBtn'].click();

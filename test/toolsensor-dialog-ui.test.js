@@ -79,6 +79,10 @@ function wsEnv(opts = {}) {
   const pending = [];
   const ctx = {
     isJogWidget: !!opts.jog,
+    // homed by default (true) so tests NOT about homing keep testing
+    // whatever they were already testing in isolation - same convention as
+    // test/toolsensor-settings-ui.test.js's boot() default.
+    laststatus: 'laststatus' in opts ? opts.laststatus : { machine: { modals: { homedRecently: true } } },
     Metro: {
       dialog: {
         create(o) { dialogState.created = o; dialogState.ref = {}; return dialogState.ref; },
@@ -118,6 +122,58 @@ test('the dialog warns explicitly that clicking the action moves the machine AUT
   const env = wsEnv();
   env.fire({ line: 12, tool: '4' });
   assert.match(env.dialogState.created.content, /AUTOMATICALLY/);
+});
+
+// ============================================================================
+// Homing enforcement (post-Commit-6 hardening): the sensor location is in
+// MACHINE coordinates (G53), meaningless unless the machine has been homed
+// since power-up/reset - same enforcement style as app/js/toolchange.js's
+// own $20 guard on the settings dialog's capture button.
+// ============================================================================
+
+test('NOT homed: the button is disabled on open, and a homing warning is shown', () => {
+  const env = wsEnv({ laststatus: { machine: { modals: { homedRecently: false } } } });
+  env.fire({ line: 12, tool: '4' });
+
+  assert.deepEqual(env.rec['.toolSensorProbeBtn'].prop[0], ['disabled', true]);
+  assert.match(env.dialogState.created.content, /Home mesin dulu/);
+});
+
+test('homed: the button is NOT disabled on open, and no homing warning appears', () => {
+  const env = wsEnv({ laststatus: { machine: { modals: { homedRecently: true } } } });
+  env.fire({ line: 12, tool: '4' });
+
+  assert.equal((env.rec['.toolSensorProbeBtn'] || { prop: [] }).prop.length, 0, 'never disabled at open time');
+  assert.ok(!/Home mesin dulu/.test(env.dialogState.created.content));
+});
+
+test('no live status at all (never connected): treated the same as not homed - disabled, warned, never assumed safe', () => {
+  const env = wsEnv({ laststatus: undefined });
+  env.fire({ line: 12, tool: '4' });
+
+  assert.deepEqual(env.rec['.toolSensorProbeBtn'].prop[0], ['disabled', true]);
+  assert.match(env.dialogState.created.content, /Home mesin dulu/);
+});
+
+test('NOT homed: clicking the action anyway (e.g. re-enabled via devtools) is refused client-side too and emits nothing', () => {
+  const env = wsEnv({ laststatus: { machine: { modals: { homedRecently: false } } } });
+  env.fire({ line: 12, tool: '4' });
+
+  env.dialogState.created.actions[0].onclick();
+
+  assert.deepEqual(env.socket.emitted, [], 'startToolSensorProbe must never be emitted while unhomed');
+  assert.match(env.rec['#toolSensorProbeStatus'].html.at(-1), /Home mesin dulu/);
+});
+
+test('re-homed WHILE the dialog is open (laststatus mutated in place): the click re-checks live, not the stale value from when the dialog opened', () => {
+  const laststatus = { machine: { modals: { homedRecently: false } } };
+  const env = wsEnv({ laststatus });
+  env.fire({ line: 12, tool: '4' });
+
+  laststatus.machine.modals.homedRecently = true; // operator homes the machine before clicking
+  env.dialogState.created.actions[0].onclick();
+
+  assert.deepEqual(env.socket.emitted, ['startToolSensorProbe'], 'the click must use the CURRENT homing state, not the one from when the dialog opened');
 });
 
 test('no tool number captured (a bare M6): still shows a usable dialog instead of "Tundefined"', () => {

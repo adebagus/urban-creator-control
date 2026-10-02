@@ -542,6 +542,19 @@ function initSocket() {
     var toolText = (info && info.tool) ? ('T' + info.tool) : 'the next tool';
     var lineText = (info && info.line) ? (' (line ' + info.line + ')') : '';
 
+    // Post-Commit-6 hardening: the sensor location is in MACHINE coordinates
+    // (G53) - only meaningful once the machine has actually been homed since
+    // power-up/reset, same reasoning as app/js/toolchange.js's own
+    // isHomedForToolSensor() (not called directly - this handler is tested
+    // standalone, see test/toolsensor-dialog-ui.test.js - so the check is
+    // inlined rather than adding a cross-file dependency for two call sites).
+    // Re-checked at click time too, not just when the dialog first opens, in
+    // case homing status changes while the operator is changing the tool.
+    function isHomedNow() {
+      return typeof laststatus !== 'undefined' && !!laststatus && !!laststatus.machine &&
+        !!laststatus.machine.modals && laststatus.machine.modals.homedRecently === true;
+    }
+
     function onToolSensorData(data) {
       if (!data || data.command !== '[ TOOL SENSOR ]') return;
       if (data.type === 'error') {
@@ -558,17 +571,24 @@ function initSocket() {
     }
     socket.on('data', onToolSensorData);
 
+    var homedOk = isHomedNow();
+
     var dialog = Metro.dialog.create({
       clsDialog: 'dark',
       title: "<i class='fas fa-bullseye'></i> Fixed Tool Sensor",
       content:
         "<div>The job has paused for a tool change" + lineText + ". Change to " + toolText + ".</div>" +
         "<div class='fg-orange mt-2'><i class='fas fa-exclamation-triangle'></i> Clicking below moves the machine AUTOMATICALLY to the tool sensor and probes - stand clear, keep a hand near Stop.</div>" +
+        (homedOk ? '' : "<div class='fg-red mt-2'><i class='fas fa-exclamation-triangle'></i> Home mesin dulu sebelum menggunakan Fixed Tool Sensor.</div>") +
         "<div id='toolSensorProbeStatus' class='mt-2'></div>",
       actions: [{
         caption: "Probe & Continue",
         cls: "alert toolSensorProbeBtn", // NOT js-dialog-close - stays open to show probing progress
         onclick: function() {
+          if (!isHomedNow()) {
+            $('#toolSensorProbeStatus').html('<i class="fas fa-exclamation-triangle fg-darkRed"></i> Home mesin dulu sebelum menggunakan Fixed Tool Sensor.');
+            return;
+          }
           $('.toolSensorProbeBtn').prop('disabled', true);
           $('#toolSensorProbeStatus').html('<i class="fas fa-spinner fa-spin"></i> Probing...');
           socket.emit('startToolSensorProbe');
@@ -578,6 +598,9 @@ function initSocket() {
         socket.off('data', onToolSensorData);
       }
     });
+    if (!homedOk) {
+      $('.toolSensorProbeBtn').prop('disabled', true);
+    }
     setTimeout(function() {
       $(".toolSensorProbeBtn").focus();
     }, 200);

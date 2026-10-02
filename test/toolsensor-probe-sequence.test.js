@@ -67,7 +67,7 @@ function harness() {
     status: {
       comms: { connectionStatus: 2, blocked: false, paused: false, awaitingToolChange: false, runStatus: 'Idle', queue: 0, alarm: '', interfaces: { type: 'usb' } },
       machine: {
-        modals: { coordinatesys: 'G54' },
+        modals: { coordinatesys: 'G54', homedRecently: true },
         firmware: { type: 'grbl', platform: 'grbl', rxBufferSize: 254, blockBufferSize: '35', version: '', date: '', buffer: '' },
         tool: { nexttool: {} },
         probe: { x: 0, y: 0, z: 0, state: -1 },
@@ -183,6 +183,40 @@ test('startToolSensorProbe() refuses when parked but mode is "pause", not "fixed
   h.ctx.toolChangeSensorLocation = sensorLoc;
   assert.equal(h.ctx.startToolSensorProbe(), false);
   assert.equal(h.ctx.toolSensorProbeState, null);
+});
+
+test('startToolSensorProbe() refuses when the machine has NOT been homed recently - machine coordinates (G53) are meaningless otherwise, not just wrong', () => {
+  const h = harness();
+  h.parkAtM6(10, 5);
+  h.ctx.toolChangeSensorLocation = sensorLoc;
+  h.ctx.status.machine.modals.homedRecently = false;
+  const before = h.written.length;
+
+  assert.equal(h.ctx.startToolSensorProbe(), false);
+
+  assert.equal(h.ctx.toolSensorProbeState, null);
+  assert.ok(h.emitted.some((e) => e[0] === 'data' && e[1].type === 'error' && /[Hh]ome/.test(e[1].response)), JSON.stringify(h.emitted));
+  assert.equal(h.written.length, before, 'no G53 move was ever sent against an unhomed origin');
+});
+
+test('startToolSensorProbe() refuses when homedRecently is missing entirely (older/partial status object), not just when explicitly false', () => {
+  const h = harness();
+  h.parkAtM6(10, 5);
+  h.ctx.toolChangeSensorLocation = sensorLoc;
+  delete h.ctx.status.machine.modals.homedRecently;
+
+  assert.equal(h.ctx.startToolSensorProbe(), false);
+});
+
+test('startToolSensorProbe() succeeds once homedRecently is true again (homing fixes the refusal, not a permanent lock)', () => {
+  const h = harness();
+  h.parkAtM6(10, 5);
+  h.ctx.toolChangeSensorLocation = sensorLoc;
+  h.ctx.status.machine.modals.homedRecently = false;
+  assert.equal(h.ctx.startToolSensorProbe(), false, 'precondition: refused while unhomed');
+
+  h.ctx.status.machine.modals.homedRecently = true;
+  assert.equal(h.ctx.startToolSensorProbe(), true);
 });
 
 test('startToolSensorProbe() refuses when no sensor location is configured, and emits an error for the UI', () => {

@@ -44,6 +44,16 @@ function isSoftLimitsEnabledForToolSensor() {
   return typeof grblParams !== 'undefined' && grblParams['$20'] == 1;
 }
 
+// Post-Commit-6 hardening: the sensor location is captured and later
+// revisited in MACHINE coordinates (G53) - meaningless (silently wrong, not
+// an error) unless the machine has actually been homed since power-up/reset.
+// Same enforcement style as isSoftLimitsEnabledForToolSensor() just above -
+// reads the live status the app already tracks, nothing new to configure.
+function isHomedForToolSensor() {
+  return typeof laststatus !== 'undefined' && !!laststatus && !!laststatus.machine &&
+    !!laststatus.machine.modals && laststatus.machine.modals.homedRecently === true;
+}
+
 // null if nothing saved, or the saved value is malformed.
 function getToolSensorLocation() {
   var raw = null;
@@ -101,6 +111,7 @@ function setToolSensorFirstBehaviour(value) {
 // recovery-env.js's ctx.laststatus).
 function captureToolSensorLocation() {
   if (!isSoftLimitsEnabledForToolSensor()) return null;
+  if (!isHomedForToolSensor()) return null;
   if (typeof laststatus === 'undefined' || !laststatus || !laststatus.machine || !laststatus.machine.position) return null;
   var p = laststatus.machine.position;
   var loc = {
@@ -120,18 +131,25 @@ function showToolSensorSettings() {
   var loc = getToolSensorLocation();
   var behaviour = getToolSensorFirstBehaviour();
   var softLimitsOn = isSoftLimitsEnabledForToolSensor();
-  var captureTitle = softLimitsOn ?
-    'Jog ke posisi sensor fisik dulu, lalu klik' :
-    'Aktifkan Soft Limits ($20) dulu di Grbl Settings untuk pakai Fixed Tool Sensor';
+  var homedOk = isHomedForToolSensor();
+  var captureAllowed = softLimitsOn && homedOk;
+  // Soft Limits takes priority in the message when BOTH are missing - same
+  // simplification as not needing a third combined-message variant; either
+  // warning on its own is already enough to tell the user to go fix one
+  // thing before trying again.
+  var captureWarning = !softLimitsOn ?
+    'Aktifkan Soft Limits ($20) dulu di Grbl Settings untuk pakai Fixed Tool Sensor.' :
+    (!homedOk ? 'Home mesin dulu sebelum menggunakan Fixed Tool Sensor.' : '');
+  var captureTitle = captureAllowed ? 'Jog ke posisi sensor fisik dulu, lalu klik' : captureWarning;
 
   Metro.dialog.create({
     clsDialog: 'dark',
     title: "<i class='fas fa-ruler-vertical'></i> Fixed Tool Sensor Settings",
     content:
       '<div>Lokasi sensor (koordinat mesin): <b id="toolSensorLocationText">' + toolSensorLocationText(loc) + '</b></div>' +
-      '<button class="button mt-2" id="captureToolSensorBtn"' + (softLimitsOn ? '' : ' disabled') +
+      '<button class="button mt-2" id="captureToolSensorBtn"' + (captureAllowed ? '' : ' disabled') +
       ' title="' + captureTitle + '">Jadikan Posisi Saat Ini sebagai Lokasi Sensor</button>' +
-      (softLimitsOn ? '' : '<div class="fg-red mt-2">Aktifkan Soft Limits ($20) dulu di Grbl Settings untuk pakai Fixed Tool Sensor.</div>') +
+      (captureAllowed ? '' : '<div class="fg-red mt-2">' + captureWarning + '</div>') +
       '<div class="mt-4"><label>Perilaku tool pertama dalam job:</label><br>' +
       '<select data-role="select" data-filter="false" id="toolSensorFirstBehaviourSelect">' +
       '<option value="always-wizard"' + (behaviour === 'always-wizard' ? ' selected' : '') + '>Selalu jalankan wizard penuh</option>' +
