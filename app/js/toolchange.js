@@ -1,15 +1,19 @@
 var sectionNum = 0;
 var toolchanges = [];
 
-// P10 Tahap 1b-i: the client's chosen tool-change mode for M6 handling
+// P10 Tahap 1b-i/1b-ii: the client's chosen tool-change mode for M6 handling
 // (separate from the firmware-native ATC/$341 toggle above it in the UI).
-// 'pause' is the only validated/shipped behaviour so far (Tahap 1a) and is
-// the safe default for a fresh install or an unrecognised saved value -
-// same "repair on read" pattern as restoreUnitsMode() in app/js/jog.js.
+// 'pause' is the safe default for a fresh install or an unrecognised saved
+// value - same "repair on read" pattern as restoreUnitsMode() in
+// app/js/jog.js. 'fixedToolSensor' is UI-only as of this commit (Tahap 1b-ii
+// Commit 1) - the server does not yet implement it (Commit 4 does) and
+// safely falls back to 'pause' itself in the meantime, same as any other
+// value it does not recognise.
+var TOOLCHANGE_MODES = ['pause', 'ignore', 'fixedToolSensor'];
 var toolChangeMode = 'pause';
 
 function setToolChangeMode(mode) {
-  toolChangeMode = (mode === 'ignore') ? 'ignore' : 'pause';
+  toolChangeMode = TOOLCHANGE_MODES.indexOf(mode) !== -1 ? mode : 'pause';
   try {
     localStorage.setItem('toolChangeMode', toolChangeMode);
   } catch (e) {}
@@ -22,6 +26,130 @@ function restoreToolChangeMode() {
   } catch (e) {}
   setToolChangeMode(saved); // also (re)writes the saved value, repairing an unrecognised one
   $('#toolChangeMode').val(toolChangeMode);
+}
+
+// --------------------------------------------------------------------------
+// Tahap 1b-ii: Fixed Tool Sensor settings (sensor location + first-tool
+// behaviour). Entirely client-side storage so far - nothing here is read by
+// the server yet (that starts at Commit 2/4). $20 (soft limits) is validated
+// here, client-side, against the live grblParams the app already parses
+// from "$$" (app/js/grbl-settings.js) - the server stays stateless about
+// individual $ values, consistent with the rest of this app's architecture.
+// --------------------------------------------------------------------------
+
+var TOOLSENSOR_FIRST_BEHAVIOURS = ['always-wizard', 'always-probe', 'prompt'];
+var TOOLSENSOR_FIRST_BEHAVIOUR_DEFAULT = 'always-wizard';
+
+function isSoftLimitsEnabledForToolSensor() {
+  return typeof grblParams !== 'undefined' && grblParams['$20'] == 1;
+}
+
+// null if nothing saved, or the saved value is malformed.
+function getToolSensorLocation() {
+  var raw = null;
+  try {
+    raw = localStorage.getItem('toolSensorLocation');
+  } catch (e) {
+    return null;
+  }
+  if (!raw) return null;
+  var loc;
+  try {
+    loc = JSON.parse(raw);
+  } catch (e) {
+    return null;
+  }
+  if (!loc || typeof loc.x !== 'number' || typeof loc.y !== 'number' || typeof loc.z !== 'number' ||
+    !isFinite(loc.x) || !isFinite(loc.y) || !isFinite(loc.z)) {
+    return null;
+  }
+  return { x: loc.x, y: loc.y, z: loc.z };
+}
+
+function setToolSensorLocation(loc) {
+  try {
+    localStorage.setItem('toolSensorLocation', JSON.stringify({ x: loc.x, y: loc.y, z: loc.z }));
+  } catch (e) {}
+}
+
+function getToolSensorFirstBehaviour() {
+  var saved = null;
+  try {
+    saved = localStorage.getItem('toolSensorFirstBehaviour');
+  } catch (e) {}
+  return TOOLSENSOR_FIRST_BEHAVIOURS.indexOf(saved) !== -1 ? saved : TOOLSENSOR_FIRST_BEHAVIOUR_DEFAULT;
+}
+
+function setToolSensorFirstBehaviour(value) {
+  var v = TOOLSENSOR_FIRST_BEHAVIOURS.indexOf(value) !== -1 ? value : TOOLSENSOR_FIRST_BEHAVIOUR_DEFAULT;
+  try {
+    localStorage.setItem('toolSensorFirstBehaviour', v);
+  } catch (e) {}
+  return v;
+}
+
+// Reads the CURRENT machine-coordinate position (work position + work
+// offset, same formula the DRO tooltips already use - see #xPos's title
+// attribute in app/js/websocket.js) and saves it as the sensor location.
+// Refuses (returns null, saves nothing) if Soft Limits is off - this is the
+// enforced prerequisite, not just a note in a tooltip.
+//
+// Reads `laststatus` - NOT `status`: the live status object only exists as
+// the parameter of socket.on('status', function(status) {...}) in
+// websocket.js; laststatus = status is what that handler assigns it to for
+// everything else in the app to read afterwards (see e.g. test/helpers/
+// recovery-env.js's ctx.laststatus).
+function captureToolSensorLocation() {
+  if (!isSoftLimitsEnabledForToolSensor()) return null;
+  if (typeof laststatus === 'undefined' || !laststatus || !laststatus.machine || !laststatus.machine.position) return null;
+  var p = laststatus.machine.position;
+  var loc = {
+    x: parseFloat((p.work.x + p.offset.x).toFixed(3)),
+    y: parseFloat((p.work.y + p.offset.y).toFixed(3)),
+    z: parseFloat((p.work.z + p.offset.z).toFixed(3)),
+  };
+  setToolSensorLocation(loc);
+  return loc;
+}
+
+function toolSensorLocationText(loc) {
+  return loc ? ('X' + loc.x + ' Y' + loc.y + ' Z' + loc.z) : 'Belum diatur / Not set';
+}
+
+function showToolSensorSettings() {
+  var loc = getToolSensorLocation();
+  var behaviour = getToolSensorFirstBehaviour();
+  var softLimitsOn = isSoftLimitsEnabledForToolSensor();
+  var captureTitle = softLimitsOn ?
+    'Jog ke posisi sensor fisik dulu, lalu klik' :
+    'Aktifkan Soft Limits ($20) dulu di Grbl Settings untuk pakai Fixed Tool Sensor';
+
+  Metro.dialog.create({
+    clsDialog: 'dark',
+    title: "<i class='fas fa-ruler-vertical'></i> Fixed Tool Sensor Settings",
+    content:
+      '<div>Lokasi sensor (koordinat mesin): <b id="toolSensorLocationText">' + toolSensorLocationText(loc) + '</b></div>' +
+      '<button class="button mt-2" id="captureToolSensorBtn"' + (softLimitsOn ? '' : ' disabled') +
+      ' title="' + captureTitle + '">Jadikan Posisi Saat Ini sebagai Lokasi Sensor</button>' +
+      (softLimitsOn ? '' : '<div class="fg-red mt-2">Aktifkan Soft Limits ($20) dulu di Grbl Settings untuk pakai Fixed Tool Sensor.</div>') +
+      '<div class="mt-4"><label>Perilaku tool pertama dalam job:</label><br>' +
+      '<select data-role="select" data-filter="false" id="toolSensorFirstBehaviourSelect">' +
+      '<option value="always-wizard"' + (behaviour === 'always-wizard' ? ' selected' : '') + '>Selalu jalankan wizard penuh</option>' +
+      '<option value="always-probe"' + (behaviour === 'always-probe' ? ' selected' : '') + '>Selalu probe panjang saja</option>' +
+      '<option value="prompt"' + (behaviour === 'prompt' ? ' selected' : '') + '>Tanya setiap kali</option>' +
+      '</select></div>',
+    actions: [{ caption: 'Tutup / Close', cls: 'js-dialog-close' }],
+  });
+
+  $('#captureToolSensorBtn').on('click', function() {
+    var newLoc = captureToolSensorLocation();
+    if (newLoc) {
+      $('#toolSensorLocationText').html(toolSensorLocationText(newLoc));
+    }
+  });
+  $('#toolSensorFirstBehaviourSelect').on('change', function() {
+    setToolSensorFirstBehaviour(this.value);
+  });
 }
 
 // Skeleton script to replace the Visualiser cone with an STL of an endmill

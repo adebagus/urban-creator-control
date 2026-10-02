@@ -24,7 +24,7 @@ function extractFunction(src, name) {
   assert.notEqual(end, -1);
   return src.slice(start, end + 2);
 }
-const VAR_DECL = TOOLCHANGE.match(/var toolChangeMode = 'pause';\n/)[0];
+const VAR_DECL = TOOLCHANGE.match(/var TOOLCHANGE_MODES = \[[^\]]*\];\n/)[0] + TOOLCHANGE.match(/var toolChangeMode = 'pause';\n/)[0];
 
 // stored: the value localStorage returns for 'toolChangeMode' (undefined = nothing saved)
 function boot(stored, opts = {}) {
@@ -65,8 +65,15 @@ test('saved "pause": stays pause', () => {
   assert.equal(e.storage.toolChangeMode, 'pause');
 });
 
+test('saved "fixedToolSensor" (Tahap 1b-ii): stays fixedToolSensor - UI-only so far, the server still falls back to "pause" on its own until Commit 4', () => {
+  const e = boot('fixedToolSensor');
+  assert.equal(e.mode(), 'fixedToolSensor');
+  assert.equal(e.selectVal, 'fixedToolSensor');
+  assert.equal(e.storage.toolChangeMode, 'fixedToolSensor');
+});
+
 test('an unrecognised saved value (garbage, wrong case, empty, number-like) falls back to "pause" and is repaired', () => {
-  for (const bad of ['xyz', 'IGNORE', 'Ignore', '', '0', 'null', ' ignore', 'fixedToolSensor']) {
+  for (const bad of ['xyz', 'IGNORE', 'Ignore', '', '0', 'null', ' ignore', 'FixedToolSensor', 'fixed-tool-sensor']) {
     const e = boot(bad);
     assert.equal(e.mode(), 'pause', JSON.stringify(bad));
     assert.equal(e.selectVal, 'pause', JSON.stringify(bad));
@@ -97,14 +104,18 @@ test('setToolChangeMode(): an unrecognised value passed directly (not via storag
 
 // --------------------------------------------------------------------------- structure
 
-test('structure: the dropdown exists with exactly "pause" (selected) and "ignore", wired to setToolChangeMode()', () => {
+test('structure: the dropdown exists with exactly "pause" (selected), "ignore" and "fixedToolSensor", wired to setToolChangeMode()', () => {
   const start = INDEX_HTML.indexOf('<select data-role="select" data-filter="false" id="toolChangeMode"');
   assert.notEqual(start, -1, 'cannot find the #toolChangeMode dropdown');
   const end = INDEX_HTML.indexOf('</select>', start);
   const markup = INDEX_HTML.slice(start, end);
   assert.match(markup, /onchange="setToolChangeMode\(this\.value\)"/);
   const options = [...markup.matchAll(/<option value="([^"]+)"([^>]*)>/g)].map((m) => [m[1], /selected/.test(m[2])]);
-  assert.deepEqual(options, [['pause', true], ['ignore', false]]);
+  assert.deepEqual(options, [['pause', true], ['ignore', false], ['fixedToolSensor', false]]);
+});
+
+test('structure: the settings gear button next to the dropdown opens showToolSensorSettings()', () => {
+  assert.match(INDEX_HTML, /id="toolSensorSettingsBtn" onclick="showToolSensorSettings\(\)"/);
 });
 
 test('structure: the ready handler calls restoreToolChangeMode() alongside restoreUnitsMode()', () => {

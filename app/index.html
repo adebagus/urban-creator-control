@@ -1215,10 +1215,13 @@
                   <div id="toolChangeModeRow" class="text-center mt-2" style="font-size: 11px;">
                     <span class="fg-gray">Tool Change:</span><br>
                     <select data-role="select" data-filter="false" id="toolChangeMode" onchange="setToolChangeMode(this.value)"
-                      title="How M6 (tool change) lines are handled while running a job. Pause: stop and show a wizard at every M6. Ignore: skip M6 automatically, no wizard - for jobs you already handle tool changes for some other way.">
+                      title="How M6 (tool change) lines are handled while running a job. Pause: stop and show a wizard at every M6. Ignore: skip M6 automatically, no wizard. Fixed Tool Sensor: automatically probe each tool's length at a fixed sensor location and compensate, no manual re-zero.">
                       <option value="pause" selected>Pause</option>
                       <option value="ignore">Ignore</option>
+                      <option value="fixedToolSensor">Fixed Tool Sensor</option>
                     </select>
+                    <span class="fas fa-cog fg-gray ml-1" id="toolSensorSettingsBtn" onclick="showToolSensorSettings()"
+                      style="cursor: pointer;" title="Fixed Tool Sensor settings: sensor location, first-tool behaviour"></span>
                   </div>
                 </div>
               </div>
