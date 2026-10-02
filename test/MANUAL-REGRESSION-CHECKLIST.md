@@ -402,23 +402,113 @@ bukan temuan baru untuk dilaporkan sebagai bug.
 
 ---
 
+## P11 — Fixed Tool Sensor (Tahap 1b-ii)
+
+> **⚠️ PERINGATAN: fitur ini menggerakkan mesin OTOMATIS tanpa konfirmasi tiap
+> langkah** (G53 ke lokasi sensor, probe G38.2, kembali). **WAJIB tes pertama
+> kali TANPA endmill terpasang (collet kosong) atau dengan Z safety clearance
+> maksimal, dan WAJIB tangan siap di tombol E-Stop/Abort sepanjang sequence
+> berjalan, sampai terbukti aman berkali-kali.**
+
+Mode M6 ketiga (selain Pause dan Ignore): saat job streaming menemukan baris
+M6, antrean berhenti tepat di situ (sama seperti mode Pause — baris M6 **TIDAK
+PERNAH dikirim ke controller**), tapi dialognya adalah "Probe & Continue",
+bukan "Continue" biasa. Begitu diklik, server menjalankan sequence probe
+otomatis: pindah ke lokasi sensor (koordinat mesin) → probe G38.2 → untuk
+tool PERTAMA dalam job, hanya menyimpan baseline (tanpa G10, work-origin Anda
+tidak disentuh) → untuk tool BERIKUTNYA, menerapkan kompensasi G10 L20 →
+kembali ke posisi semula → job lanjut otomatis. Lokasi sensor disimpan per-PC
+(localStorage client), bukan di firmware.
+
+- [ ] **Lokasi sensor BELUM di-set → tombol/opsi fixedToolSensor harus menolak
+      dengan jelas, TIDAK gerak ke 0,0,0**: pilih mode fixedToolSensor tanpa
+      pernah klik "Jadikan Posisi Saat Ini sebagai Lokasi Sensor", jalankan job
+      dengan M6. **Harapan**: begitu diklik "Probe & Continue" (atau tombolnya
+      memang sudah disabled/menampilkan peringatan sebelum itu), mesin TIDAK
+      bergerak sama sekali ke arah manapun, muncul pesan error yang jelas
+      (lihat Log/Serial Console: "Lokasi sensor belum diatur...").
+      **Cepat cek**: `npm test` → `startToolSensorProbe() refuses when no
+      sensor location is configured...` (otomatis, cek logikanya; test manual
+      ini yang konfirmasi mesin BENERAN diam).
+- [ ] **Soft limits ($20) OFF → tombol capture/probe harus disabled di
+      client**: set `$20=0`, buka pengaturan Fixed Tool Sensor. **Harapan**:
+      tombol "Jadikan Posisi Saat Ini sebagai Lokasi Sensor" benar-benar
+      ter-disable (bukan cuma tooltip peringatan), dengan catatan merah
+      "Aktifkan Soft Limits ($20) dulu...". Set `$20=1`, buka lagi → tombol
+      aktif normal.
+- [ ] **Sequence normal end-to-end**: job dengan DUA M6 (tool berbeda), mode
+      fixedToolSensor, lokasi sensor sudah di-set dan Soft Limits ON.
+      Jalankan sampai M6 pertama, klik "Probe & Continue". **Harapan tool
+      pertama (baseline)**: mesin pindah ke lokasi sensor, probe menyentuh,
+      TIDAK ada gerakan G10 (lihat Log: tidak ada baris `G10`), mesin kembali
+      ke posisi semula, job lanjut otomatis tanpa klik apapun lagi. Lanjutkan
+      sampai M6 kedua, ganti tool fisik, klik "Probe & Continue" lagi.
+      **Harapan tool kedua (kompensasi)**: urutan sama, TAPI kali ini ADA
+      baris `G10 L20 P..` di Log sebelum mesin kembali — dan hasil potongan
+      di Z pada posisi yang sama secara fisik seperti kalau tool pertama yang
+      dipakai (test paling meyakinkan: dua tool dengan panjang BERBEDA jelas,
+      cek permukaan potong tetap rata/sejajar, tidak ada lompatan Z).
+- [ ] **Probe GAGAL (sensor tidak tersentuh dalam jarak 25mm)**: pindahkan
+      posisi sensor secara sengaja (edit lokasi tersimpan jadi jauh dari
+      sensor fisik, atau angkat sensor fisiknya), klik "Probe & Continue".
+      **Harapan**: controller ALARM (G38.2 gagal menyentuh), sequence
+      berhenti TOTAL — TIDAK ada G10, TIDAK kembali ke posisi semula secara
+      otomatis, TIDAK lanjut job dengan asumsi sukses. Job tetap berstatus
+      menunggu (awaitingToolChange) sampai Anda Clear Alarm secara manual.
+- [ ] **Tekan Stop/Abort SAAT sequence sedang bergerak** (di tengah gerakan
+      G53 menuju sensor, ATAU di tengah gerakan probe G38.2 itu sendiri — coba
+      keduanya secara terpisah, di dua percobaan berbeda): **Harapan**: mesin
+      benar-benar berhenti SEKETIKA, TIDAK ada gerakan residual/lanjutan
+      setelah Stop ditekan (perhatikan dengan teliti — terutama kalau Stop
+      ditekan di tengah G38.2, pastikan tidak ada gerakan probe susulan).
+- [ ] **Cabut USB/tutup app SAAT sequence berjalan → reconnect**: cabut USB
+      (atau force-close app) persis saat mesin sedang bergerak menuju sensor
+      atau sedang probe, sambung/buka lagi. **Harapan**: `job-recovery.json`
+      (lihat P9) tetap menunjukkan `resumeLine` = baris M6 itu sendiri (bukan
+      baris sebelum/sesudahnya), state `interrupted`/`stopped` sesuai cara
+      diputus. Mulai job BARU dengan fixedToolSensor dan M6 pertamanya:
+      **harus diperlakukan sebagai baseline lagi** (tanpa G10) — baseline dari
+      percobaan yang terputus tadi TIDAK BOLEH nyangkut/kepakai di job baru.
+      **Cepat cek**: `npm test` → test-test `INTERRUPTION:` di
+      `test/toolsensor-probe-sequence.test.js` (otomatis, cek logikanya; test
+      manual ini yang konfirmasi hardware beneran berhenti bersih).
+- [ ] **Dua M6 fixedToolSensor berturut-turut dalam satu job**: sudah
+      tercakup di skenario "Sequence normal end-to-end" di atas, tapi
+      perhatikan khusus baris `G10 L20 P.. Z..` yang muncul di Log saat M6
+      kedua — **nilai Z di baris itu harus sama dengan hasil probe tool
+      PERTAMA** (baseline), bukan `Z0` dan bukan angka yang tidak masuk akal.
+      Kalau punya 3 tool, ulangi untuk M6 ketiga — baseline yang dipakai tetap
+      harus dari tool PERTAMA, bukan dari tool kedua.
+
+**Known limitation (v1, disetujui — bukan bug):** hanya perilaku
+"always-probe" untuk tool pertama yang aktif. Pilihan "always-wizard" dan
+"prompt" di dialog pengaturan tersimpan tapi belum berefek apapun.
+
+---
+
 ## Ringkasan: Area Paling Berisiko (prioritaskan waktu review di sini)
 
-1. **🔴 Laser profile homing behavior ($44/$45)** — ini SATU-SATUNYA test di
+1. **🔴 Fixed Tool Sensor (P11)** — SATU-SATUNYA fitur di seluruh app yang
+   menggerakkan mesin OTOMATIS, berkali-kali, tanpa konfirmasi per langkah
+   (G53 + probe G38.2 + kembali). Kalau dilewati atau ditest asal-asalan,
+   risikonya tabrakan fisik (collet/tool ke sensor atau benda kerja) tanpa ada
+   kesempatan membatalkan di tengah jalan. **WAJIB test pertama tanpa endmill
+   terpasang, tangan siap di E-Stop, sampai terbukti aman berkali-kali.**
+2. **🔴 Laser profile homing behavior ($44/$45)** — ini SATU-SATUNYA test di
    seluruh daftar yang bergantung pada ASUMSI (nilai $45 firmware Anda sudah
    berisi mask X+Y), bukan sesuatu yang app jamin. Kalau dilewati, risikonya
    Z bisa ikut/tidak ikut homing dengan cara yang tidak terduga — **test ini di
    UC-100 dengan tangan siap di E-Stop sebelum dipakai kerja beneran.**
-2. **🔴 Force-close port di grblHAL USB-CDC** — dari histori P1, USB-CDC lebih
+3. **🔴 Force-close port di grblHAL USB-CDC** — dari histori P1, USB-CDC lebih
    rawan port nyangkut dibanding chip serial biasa. Kalau cuma test di GRBL dan
    skip grblHAL, bisa lolos padahal grblHAL-nya masih bermasalah.
-3. **🟠 Toggle jarak jog di window kecil** — ini murni bug regresi yang PERNAH
+4. **🟠 Toggle jarak jog di window kecil** — ini murni bug regresi yang PERNAH
    terjadi (overlap dengan tab bar). Kalau hanya ditest di window full-screen,
    bug serupa bisa lolos tanpa ketahuan.
-4. **🟠 CORS/CSRF dari device LAN lain** — automated test cuma cek KODE-nya ada,
+5. **🟠 CORS/CSRF dari device LAN lain** — automated test cuma cek KODE-nya ada,
    bukan bahwa server BENERAN menolak di jaringan asli. Ini satu-satunya test
    security yang perlu 2 perangkat fisik untuk benar-benar diverifikasi.
-5. **🟡 TLS/TCZ error-handling** — firmware-dependent (Mythos custom), automated
+6. **🟡 TLS/TCZ error-handling** — firmware-dependent (Mythos custom), automated
    test tidak bisa menjangkau ini sama sekali (butuh hardware nyata + firmware
    spesifik Anda) — kalau dilewati, tidak ada jaring pengaman otomatis apapun.
 
