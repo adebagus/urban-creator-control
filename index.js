@@ -2956,12 +2956,15 @@ function stopPort() {
   // Snapshot BEFORE the queue is wiped a few lines down. No-op if no tracked
   // job is running.
   jobRecovery.finish('interrupted');
-  announceJobStopped('interrupted');
-  clearInterval(queueCounter);
+  // The queue is gone, so everything that goes with it must go too.
+  // queuePointer used to be left at its old value: after a USB pull mid-job
+  // the first command sent on reconnect saw "length 1 - pointer 151 < 0", was
+  // silently NOT written to the port, and tripped the "job complete" branch of
+  // send1Q with the old jobStartTime. And "paused" survived it: a job paused,
+  // then USB pulled, left every command after the reconnect queued forever
+  // without a word (a native-USB board may send no banner to clear it).
+  resetSenderState('interrupted');
   clearInterval(statusLoop);
-  if (jogWindow) {
-    jogWindow.setProgressBar(0);
-  }
   status.comms.interfaces.activePort = false;
   status.comms.interfaces.activeBaud = false;
   status.comms.connectionStatus = 0;
@@ -2970,20 +2973,6 @@ function stopPort() {
   status.machine.firmware.version = ""; // get version
   status.machine.firmware.date = "";
   status.machine.firmware.buffer = "";
-  gcodeQueue.length = 0;
-  sentBuffer.length = 0; // dump bufferSizes
-  // The queue is gone, so the job-scoped state that goes with it must go too.
-  // queuePointer used to be left at its old value: after a USB pull mid-job
-  // the first command sent on reconnect saw "length 1 - pointer 151 < 0", was
-  // silently NOT written to the port, and tripped the "job complete" branch of
-  // send1Q with the old jobStartTime (bogus "JOB COMPLETE" log + junk job
-  // history entry). A NEW job started before any other command would have
-  // begun at line 152 instead of line 1. Every place that dumps the queue
-  // (this, stop(), clearAlarm method 2, send1Q's completion) must reset the
-  // same three variables - test/reconnect-stale-state.test.js enforces it.
-  queuePointer = 0;
-  jobStartTime = false;
-  jobCompletedMsg = "";
 
   if (typeof port === 'undefined' || !port) {
     return; // never connected - nothing to close

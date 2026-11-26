@@ -280,13 +280,27 @@ test('every place index.js dumps gcodeQueue also resets queuePointer, jobStartTi
   lines.forEach((line, i) => {
     if (/^\s*gcodeQueue\.length\s*=\s*0/.test(line)) sites.push(i);
   });
-  assert.ok(sites.length >= 4, 'expected the 4 known queue-dump sites, found ' + sites.length);
+  // The resets now go through dropUnsentLines()/resetSenderState(); the
+  // genuine-completion branch of send1Q() is the other literal site.
+  assert.ok(sites.length >= 2, 'expected the shared dump plus send1Q\'s completion, found ' + sites.length);
   for (const i of sites) {
     const window = lines.slice(Math.max(0, i - 4), i + 16).join('\n');
     const where = 'index.js line ' + (i + 1);
     assert.match(window, /queuePointer\s*=\s*0/, where + ' must reset queuePointer');
     assert.match(window, /jobStartTime\s*=\s*false/, where + ' must reset jobStartTime');
     assert.match(window, /jobCompletedMsg\s*=\s*""/, where + ' must reset jobCompletedMsg');
+  }
+});
+
+test('every reset / stop / disconnect path empties the sender through resetSenderState()', () => {
+  const body = (name) => {
+    const s = INDEX_SRC.indexOf('function ' + name + '(');
+    assert.notEqual(s, -1, 'cannot find ' + name);
+    return INDEX_SRC.slice(s, INDEX_SRC.indexOf('\n}\n', s));
+  };
+  for (const name of ['stop', 'stopPort', 'resetController', 'onFirmwareBanner']) {
+    assert.match(body(name), /resetSenderState\(/, name + '() must use resetSenderState()');
+    assert.ok(!/gcodeQueue\.length\s*=\s*0/.test(body(name)), name + '() must not dump the queue on its own');
   }
 });
 
@@ -432,7 +446,7 @@ test('structural: every place that dumps the queue announces first, or is the ge
   const lines = INDEX_SRC.split('\n');
   const sites = [];
   lines.forEach((line, i) => { if (/^\s*gcodeQueue\.length\s*=\s*0/.test(line)) sites.push(i); });
-  assert.ok(sites.length >= 4);
+  assert.ok(sites.length >= 2);
   // resetSenderState() / dropUnsentLines() are the shared dumps: they announce,
   // and freezing the recovery record is their CALLERS' job (checked below).
   const SHARED_DUMP = /^function (resetSenderState|dropUnsentLines)\(/;
