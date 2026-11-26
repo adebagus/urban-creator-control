@@ -710,6 +710,7 @@ var status = {
     firmware: {
       type: "",
       platform: "",
+      variant: "", // "mythos" for GRBL Mythos (UC-100), else ""
       version: "",
       date: "",
       buffer: [],
@@ -1588,6 +1589,9 @@ io.on("connection", function(socket) {
 
             status.machine.name = ver.name
             io.sockets.emit("machinename", ver.name);
+            if (/mythos/i.test(ver.name)) {
+              status.machine.firmware.variant = 'mythos'; // a native-USB board may never print its banner
+            }
           }
 
           if (data.indexOf("[OPT:") === 0) {
@@ -1766,6 +1770,13 @@ io.on("connection", function(socket) {
               status.machine.firmware.type = "grbl";
               status.machine.firmware.platform = "gnea"
               status.machine.firmware.version = data.substr(5, 4); // get version
+            }
+            if (data.indexOf("Grbl") === 0) {
+              // "Grbl 1.1f [GRBL Mythos - CNC Urban Creator 2026]['$' for help]":
+              // Grbl to every other check, but its own settings ($309/$319/$329)
+              // get names in the client (grbl-settings-enum.js). The banner
+              // comes before the $$ dump; $I's name says it too.
+              status.machine.firmware.variant = /mythos/i.test(data) ? 'mythos' : '';
             }
             if (parseFloat(status.machine.firmware.version) < 1.1) { // If version is too old
               if (status.machine.firmware.version.length < 3) {
@@ -3074,6 +3085,7 @@ function stopPort() {
   unlockAfterBanner = false; // a Clear Alarm still waiting for its banner is void now
   alarmActive = false; // re-learnt from the next controller's status
   status.machine.firmware.type = "";
+  status.machine.firmware.variant = "";
   status.machine.firmware.version = ""; // get version
   status.machine.firmware.date = "";
   status.machine.firmware.buffer = "";

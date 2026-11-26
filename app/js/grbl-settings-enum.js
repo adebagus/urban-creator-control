@@ -166,13 +166,40 @@ function grblEnumEsc(text) {
   });
 }
 
-// The name of a setting: the static template's title first, then the controller's own name, else "unknown".
-// asHtml: the result goes into HTML (log, dialog) - the controller's text is escaped, the template titles
-// are trusted and stay as they were. For plain text (the backup file) leave it false.
+// GRBL Mythos (UC-100) settings the static templates do not have - from the firmware's own documentation
+// (GRBL_Mythos AUTOSQUARE.md), same shape as a $ES definition. Only used when the connected firmware is
+// Mythos (status.machine.firmware.variant, from its banner / $I): the same numbers may mean something else on
+// another firmware, and a static template would win over a grblHAL controller's own names.
+var GRBL_MYTHOS_SETTINGS = {
+  '309': { id: 309, name: 'Auto-square mode (dual Y)', unit: '', type: 3, format: '4 axes (A is its own axis),A pin drives the Y2 motor', min: '0', max: '1', reboot: true },
+  '319': { id: 319, name: 'Auto-square: max squaring distance of the second Y side', unit: 'mm', type: 6, format: '', min: '1', max: '25', reboot: false },
+  '329': { id: 329, name: 'Auto-square: Y2 offset after squaring (positive backs Y2 off, same as grblHAL $171)', unit: 'mm', type: 6, format: '', min: '-10', max: '10', reboot: false }
+};
+
+function grblIsMythos() {
+  return typeof laststatus !== 'undefined' && !!laststatus && !!laststatus.machine && !!laststatus.machine.firmware &&
+    laststatus.machine.firmware.variant === 'mythos';
+}
+
+// The definition of a setting the static templates do not know: the controller's own ($ES), else the
+// Mythos one when connected to Mythos.
+function grblSettingDefinition(key2) {
+  var e = grblEnum.settings[String(key2)];
+  if (e) return e;
+  if (grblIsMythos() && Object.prototype.hasOwnProperty.call(GRBL_MYTHOS_SETTINGS, String(key2))) {
+    return GRBL_MYTHOS_SETTINGS[String(key2)];
+  }
+  return undefined;
+}
+
+// The name of a setting: the static template's title first, then the controller's own name (or the
+// Mythos one), else "unknown". asHtml: the result goes into HTML (log, dialog) - the controller's text is
+// escaped, the template titles are trusted and stay as they were. For plain text (the backup file) leave it
+// false.
 function grblSettingName(key2, asHtml) {
   var t = grblSettingsTemplate2[key2];
   if (t !== undefined) return t.title;
-  var e = grblEnum.settings[String(key2)];
+  var e = grblSettingDefinition(key2);
   if (e && e.name) return asHtml ? grblEnumEsc(e.name) : e.name;
   return 'unknown';
 }
@@ -227,7 +254,7 @@ function grblEnumHint(e) {
 // definition from the controller it is exactly the row the panel always showed (red key, plain input).
 // The input keeps the id convention val-<n>-input, so change detection and Save work unchanged.
 function grblEnumRowHtml(key, key2, value) {
-  var e = grblEnum.settings[String(key2)];
+  var e = grblSettingDefinition(key2);
   var v = grblEnumEsc(value);
   if (!e) {
     return '<tr>' +
