@@ -67,13 +67,15 @@ const FUNCTIONS = [
   // added by the reliability work - skipped when absent (pre-fix code)
   'resetSenderState', 'resetController', 'isRealtimeCommand', 'dropUnsentLines', 'reportDroppedLines',
   'commandRejection', 'rejectCommand', 'queueOperatorLine', 'onAlarmReported', 'noteAnswerAfterAlarm', 'onFirmwareBanner', 'isSpontaneousMessage',
-  'parseVersionLine',
+  'parseVersionLine', 'portIsOpen', 'onPortWriteDone', 'onPortLost', 'statusTick', 'resetWhy', 'operatorLines',
+  'reportUnansweredLines', 'realtimeLabel', 'unsentOperatorLineCount', 'noteIfQueuedBehind',
 ];
 const SOCKET_HANDLERS = ['runCommand', 'resetMachine', 'clearAlarm', 'jog', 'jogXY', 'jogTo', 'closePort'];
 const VARS = [
   /var modalCommands = \[[^\]]*\]\n/, /var modalCommandsRegExp = [^\n]*\n/,
   /var GRBL_RX_BUFFER_SIZE = [^\n]*\n/, /var GRBLHAL_RX_BUFFER_SIZE = [^\n]*\n/,
   /var ALARM_ANSWER_TIMEOUT_MS = [^\n]*\n/, /var SPONTANEOUS_MESSAGES = [^\n]*\n/,
+  /var STATUS_WATCHDOG_MS = [^\n]*\n/,
 ].map(grabVar).join('');
 
 function isRealtimeByte(s) {
@@ -87,6 +89,15 @@ class MockGrbl {
     this.alarm = false;
     this.rules = [];
     this.realtime = [];
+    this.statusQueries = 0; // "?" received, status report not yet sent
+    // The USB device is gone (bench 27 Nov: re-enumerated while the board kept
+    // power): the old port handle still takes writes, but nothing reaches the
+    // board and nothing ever comes back - and serialport says nothing.
+    this.dead = false;
+  }
+
+  statusLine() {
+    return '<' + (this.alarm ? 'Alarm' : 'Idle') + '|MPos:0.000,0.000,0.000|FS:0,0>';
   }
 
   // Byte by byte, like the firmware's serial ISR: a realtime byte is picked
@@ -94,13 +105,16 @@ class MockGrbl {
   // path wrote "\x18\n") - and ctrl-x resets on arrival, flushing everything
   // received but not yet answered, including the rest of this write.
   receive(s) {
+    if (this.dead) return;
     let line = '';
     for (const ch of s) {
       if (ch === CTRL_X) {
         this.inbox = [{ kind: 'reset' }];
         return;
       }
-      if (isRealtimeByte(ch)) {
+      if (ch === '?') {
+        this.statusQueries++;
+      } else if (isRealtimeByte(ch)) {
         this.realtime.push(ch);
       } else if (ch === '\n') {
         this.inbox.push({ kind: 'line', text: line });
@@ -172,12 +186,22 @@ function createSim(opts = {}) {
   const grbl = new MockGrbl(sim);
   sim.grbl = grbl;
 
+  // Date.now() / new Date() on the simulator's clock (epoch offset keeps them plausible).
+  const EPOCH = Date.UTC(2026, 10, 27, 8, 0, 0);
+  function FakeDate(...args) {
+    return args.length ? new Date(...args) : new Date(EPOCH + now);
+  }
+  FakeDate.now = () => EPOCH + now;
+
   const ctx = {
     gcodeQueue: [], sentBuffer: [], queuePointer: 0, queueCounter: null, statusLoop: null,
     jobStartTime: false, jobCompletedMsg: '', laserTestOn: false, fluidncConfig: '', uploadedgcode: '',
     jogWindow: null, oldpinslist: [], echoNextStatusReport: false,
     controllerReady: opts.controllerReady === undefined ? true : opts.controllerReady,
     alarmActive: false, alarmPendingAnswers: 0, alarmAnswerTimer: null, unlockAfterBanner: false,
+    lastControllerRx: 0, internalQ: new Set(), sentBufferInternal: [],
+    // the code's Date runs on the simulator's clock, so advance() moves it too
+    Date: FakeDate,
     xPos: 0, yPos: 0, zPos: 0, aPos: 0, xOffset: 0, yOffset: 0, zOffset: 0, aOffset: 0,
     config: { posDecimals: 3, grblWaitTime: 1 },
     status: {
@@ -243,6 +267,20 @@ function createSim(opts = {}) {
       return log.filter((l) => l.response.startsWith(prefix)).map((l) => '[' + l.command + '] ' + l.response);
     },
     eventsOf(name) { return events.filter((e) => e[0] === name).map((e) => e[1]); },
+    // The connection is up and statusLoop is running (index.js starts the
+    // watchdog's window when it starts the loop).
+    startStatusPolling() { ctx.lastControllerRx = FakeDate.now(); },
+    // Let ms pass with the 200 ms "?" poll running; a live board answers each "?".
+    poll(ms) {
+      for (let t = 0; t < ms; t += 200) {
+        sim.advance(200);
+        ctx.statusTick();
+        while (grbl.statusQueries > 0 && !grbl.dead) {
+          grbl.statusQueries--;
+          sim.rx(grbl.statusLine());
+        }
+      }
+    },
     state() {
       return {
         gcodeQueue: [...ctx.gcodeQueue], queuePointer: ctx.queuePointer, sentBuffer: [...ctx.sentBuffer],

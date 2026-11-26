@@ -60,7 +60,7 @@ function harness() {
   const timers = [];
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uc-stale-'));
   const ctx = {
-    gcodeQueue: [], queuePointer: 0, sentBuffer: [], statusLoop: null, queueCounter: null, controllerReady: true, alarmActive: false, alarmPendingAnswers: 0, alarmAnswerTimer: null, ALARM_ANSWER_TIMEOUT_MS: 3000, unlockAfterBanner: false, clearTimeout() {},
+    gcodeQueue: [], queuePointer: 0, sentBuffer: [], statusLoop: null, queueCounter: null, controllerReady: true, internalQ: new Set(), sentBufferInternal: [], lastControllerRx: 0, STATUS_WATCHDOG_MS: 3000, alarmActive: false, alarmPendingAnswers: 0, alarmAnswerTimer: null, ALARM_ANSWER_TIMEOUT_MS: 3000, unlockAfterBanner: false, clearTimeout() {},
     status: {
       comms: { connectionStatus: 2, blocked: false, paused: false, runStatus: 'Idle', queue: 0, alarm: '', interfaces: { type: 'usb' } },
       machine: { modals: {}, firmware: { type: 'grbl', platform: 'grbl', rxBufferSize: 254, blockBufferSize: '35', version: '', date: '', buffer: '' }, tool: { nexttool: {} } },
@@ -79,7 +79,7 @@ function harness() {
   });
   vm.createContext(ctx);
   vm.runInContext(
-    MODAL_VARS + ['commandRejection', 'rejectCommand', 'queueOperatorLine', 'addQToEnd', 'send1Q', 'BufferSpace', 'machineSend', 'addQRealtime', 'runJob', 'announceJobStopped', 'resetSenderState', 'dropUnsentLines', 'resetController', 'isRealtimeCommand', 'stopPort', 'stop']
+    MODAL_VARS + ['commandRejection', 'rejectCommand', 'queueOperatorLine', 'portIsOpen', 'reportDroppedLines', 'onPortWriteDone', 'onPortLost', 'resetWhy', 'operatorLines', 'reportUnansweredLines', 'realtimeLabel', 'unsentOperatorLineCount', 'noteIfQueuedBehind', 'addQToEnd', 'send1Q', 'BufferSpace', 'machineSend', 'addQRealtime', 'runJob', 'announceJobStopped', 'resetSenderState', 'dropUnsentLines', 'resetController', 'isRealtimeCommand', 'stopPort', 'stop']
       .map(grabFunction).join('\n'),
     ctx
   );

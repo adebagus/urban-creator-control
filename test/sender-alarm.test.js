@@ -138,7 +138,7 @@ test('ALARM mid-job, the line in flight is NEVER answered: after 3 s it is forgo
   assert.deepEqual(sim.state().sentBuffer, ['G1 X2'], 'kept until the timeout');
   sim.advance(1);
   assert.deepEqual(sim.state().sentBuffer, []);
-  assert.deepEqual(sim.logged('1 jawaban'), ['[] 1 jawaban dibatalkan (timeout setelah ALARM)']);
+  assert.deepEqual(sim.logged('1 jawaban'), ['[] 1 jawaban dibatalkan (timeout setelah ALARM): G1 X2']);
   sim.type('$X');
   sim.grbl.answer();
   assert.deepEqual(sim.log.filter((l) => l.command === '$X').map((l) => l.response), ['[MSG:Caution: Unlocked]', 'ok']);

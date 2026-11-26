@@ -610,6 +610,19 @@ var alarmActive = false;
 var ALARM_ANSWER_TIMEOUT_MS = 3000;
 var alarmPendingAnswers = 0;
 var alarmAnswerTimer = null;
+// When the controller last sent us ANY line. A USB-CDC board that drops off
+// the bus and re-enumerates (bench 27 Nov: USB pulled with the board still
+// powered) gives serialport no "close" and no "error" on Windows - the old
+// handle just goes quiet (serial.log shows nothing until the manual
+// Disconnect). Grbl answers "?" at once in every state, so this much silence
+// on a polled USB connection means the port is gone. 0 = not watching.
+var lastControllerRx = 0;
+var STATUS_WATCHDOG_MS = 3000;
+// Queue indexes of the "$G" lines addQToEnd() adds after modal/T commands,
+// and the same flag for each sentBuffer entry: they are the sender's own
+// bookkeeping, never counted in "N baris/perintah dibatalkan".
+var internalQ = new Set();
+var sentBufferInternal = [];
 var statusLoop;
 var frontEndUpdateLoop, sysinfoUpdateLoop
 
@@ -1527,6 +1540,9 @@ io.on("connection", function(socket) {
           } else {
             debug_log('ERROR: Machine connection not open!');
           }
+        } else if (status.comms.connectionStatus > 0) {
+          // we still think we are connected: the port went away under us
+          onPortLost('port tidak terbuka lagi');
         } else {
           serialLog('warn', 'Port error suppressed ("Port is not open") on ' + (data.port || data.ip));
         }
@@ -1562,6 +1578,7 @@ io.on("connection", function(socket) {
 
         parser.on("data", function(data) {
           //console.log(data)
+          lastControllerRx = Date.now(); // the controller is alive - see statusTick()
           var command = sentBuffer[0];
           // A line the controller prints on its own is not the answer to the
           // command in flight - it is logged without that command's label
@@ -1854,6 +1871,7 @@ io.on("connection", function(socket) {
             if (status.machine.firmware.type === "grbl") {
               // debug_log('got OK from ' + command)
               command = sentBuffer.shift();
+              sentBufferInternal.shift();
               noteAnswerAfterAlarm();
             }
             if (command == "$CD") {
@@ -1920,6 +1938,7 @@ io.on("connection", function(socket) {
             jobRecovery.finish('stopped');
             reportDroppedLines(dropUnsentLines('error'), 'error');
             sentBuffer.shift();
+            sentBufferInternal.shift();
             noteAnswerAfterAlarm();
             status.comms.connectionStatus = 5;
           } else if (data === ' ') {
@@ -2104,11 +2123,8 @@ io.on("connection", function(socket) {
               }, 100)
               // Start interval for status queries
               clearInterval(statusLoop);
-              statusLoop = setInterval(function() {
-                if (status.comms.connectionStatus > 0) {
-                  addQRealtime("?");
-                }
-              }, 200);
+              lastControllerRx = Date.now(); // the watchdog's window starts now
+              statusLoop = setInterval(statusTick, 200);
               status.machine.modals.homedRecently = false;
             }
 
@@ -2178,44 +2194,49 @@ io.on("connection", function(socket) {
   })
 
   socket.on('runCommand', function(data) {
-    debug_log('Run Command (' + data.replace('\n', '|') + ')');
-    if (status.comms.connectionStatus > 0) {
-      if (data) {
-        data = data.split('\n');
-        var queuedAny = false;
-        for (var i = 0; i < data.length; i++) {
-          var line = data[i].split(';'); // Remove everything after ; = comment
-          var tosend = line[0].trim();
-          if (tosend.length > 0) {
-            if (isRealtimeCommand(tosend)) {
-              if (tosend === String.fromCharCode(0x18)) {
-                resetController('stopped', 'restart'); // Restart / Restart Grbl buttons send this
-              } else {
-                if (tosend === '?') {
-                  echoNextStatusReport = true; // it used to print because "?" sat in sentBuffer
-                }
-                addQRealtime(tosend);
-              }
+    debug_log('Run Command (' + String(data).replace('\n', '|') + ')');
+    if (data) {
+      // Every line of this that is not sent gets a log line saying why -
+      // nothing typed in the console may just disappear.
+      var connected = status.comms.connectionStatus > 0 && portIsOpen();
+      data = data.split('\n');
+      var queuedAny = false;
+      var aheadBefore = unsentOperatorLineCount(); // queued before this command arrived
+      for (var i = 0; i < data.length; i++) {
+        var line = data[i].split(';'); // Remove everything after ; = comment
+        var tosend = line[0].trim();
+        if (tosend.length > 0) {
+          if (!connected) {
+            rejectCommand(isRealtimeCommand(tosend) ? realtimeLabel(tosend) : tosend, 'port terputus / tidak terhubung - Connect dulu');
+          } else if (isRealtimeCommand(tosend)) {
+            if (tosend === String.fromCharCode(0x18)) {
+              resetController('stopped', 'restart'); // Restart / Restart Grbl buttons send this
             } else {
-              var why = commandRejection(tosend);
-              if (why) {
-                rejectCommand(tosend, why); // said in the log - never dropped silently
-              } else {
-                addQToEnd(tosend);
-                queuedAny = true;
+              if (tosend === '?') {
+                echoNextStatusReport = true; // it used to print because "?" sat in sentBuffer
               }
+              addQRealtime(tosend);
+            }
+          } else {
+            var why = commandRejection(tosend);
+            if (why) {
+              rejectCommand(tosend, why); // said in the log - never dropped silently
+            } else {
+              if (!queuedAny) {
+                noteIfQueuedBehind(tosend, aheadBefore);
+              }
+              addQToEnd(tosend);
+              queuedAny = true;
             }
           }
         }
-        // Only lines can make send1Q() do anything - and a realtime byte typed
-        // mid-job (e.g. "!") must not push one more job line into flight.
-        if (queuedAny) {
-          status.comms.runStatus = 'Running'
-          send1Q();
-        }
       }
-    } else {
-      debug_log('ERROR: Machine connection not open!');
+      // Only lines can make send1Q() do anything - and a realtime byte typed
+      // mid-job (e.g. "!") must not push one more job line into flight.
+      if (queuedAny) {
+        status.comms.runStatus = 'Running'
+        send1Q();
+      }
     }
   });
 
@@ -2248,7 +2269,7 @@ io.on("connection", function(socket) {
         debug_log('ERROR: Invalid params!');
       }
     } else {
-      debug_log('ERROR: Machine connection not open!');
+      rejectCommand('Jog ' + data, 'port terputus / tidak terhubung - Connect dulu');
     }
   });
 
@@ -2283,7 +2304,7 @@ io.on("connection", function(socket) {
         debug_log('ERROR: Invalid params!');
       }
     } else {
-      debug_log('ERROR: Machine connection not open!');
+      rejectCommand('Jog XY', 'port terputus / tidak terhubung - Connect dulu');
     }
   });
 
@@ -2709,10 +2730,10 @@ function readFile(filePath) {
 
 function machineSend(gcode, realtime) {
   debug_log("SENDING: " + gcode)
-  if (port.isOpen) {
+  if (portIsOpen()) {
     if (realtime) {
       // realtime commands doesnt count toward the queue, does not generate OK
-      port.write(gcode);
+      port.write(gcode, onPortWriteDone);
     } else {
       if (gcode.match(/T([\d.]+)/i)) {
         var tool = parseFloat(RegExp.$1);
@@ -2734,12 +2755,55 @@ function machineSend(gcode, realtime) {
       if (sourceLine !== null) data.push(sourceLine);
       io.sockets.emit("queueCount", data);
       // debug_log(gcode)
-      port.write(gcode);
+      port.write(gcode, onPortWriteDone);
       debug_log("SENT: " + gcode)
     }
   } else {
     debug_log("PORT NOT OPEN")
+    if (status.comms.connectionStatus > 0) {
+      onPortLost('port tidak terbuka lagi');
+    }
   }
+}
+
+function portIsOpen() {
+  return typeof port !== 'undefined' && !!port && !!port.isOpen;
+}
+
+function onPortWriteDone(err) {
+  if (err) {
+    onPortLost('gagal menulis ke port: ' + err.message);
+  }
+}
+
+// The port is gone and serialport did not (or could not) say so with a
+// "close" event: the controller went silent (statusTick's watchdog), a write
+// failed, or the port reports itself not open. Same handling as a "close":
+// stopPort() - recovery record "interrupted", every unsent / unanswered line
+// dropped WITH a log line naming it - plus one clear message, and the status
+// becomes "not connected" so the UI stops showing a live COM port.
+function onPortLost(reason) {
+  if (!(status.comms.connectionStatus > 0)) return; // already handled
+  serialLog('error', 'Port lost (' + reason + ')');
+  io.sockets.emit('data', {
+    'command': 'disconnect',
+    'response': 'Koneksi ke controller terputus (' + reason + ') - port ditutup. Pasang USB lagi, lalu klik Connect.',
+    'type': 'error'
+  });
+  status.comms.connectionStatus = 0;
+  stopPort();
+}
+
+// The 200 ms "?" poll, with its watchdog (see lastControllerRx). Only on a
+// polled USB connection that is up (not while flashing firmware, status 6).
+function statusTick() {
+  if (!(status.comms.connectionStatus > 0)) return;
+  if (status.comms.connectionStatus != 6 && status.comms.interfaces.type == 'usb' &&
+    lastControllerRx > 0 && Date.now() - lastControllerRx > STATUS_WATCHDOG_MS) {
+    onPortLost('tidak ada balasan dari controller selama ' + (STATUS_WATCHDOG_MS / 1000) + ' detik');
+    return;
+  }
+  addQRealtime("?");
 }
 
 function runJob(object) {
@@ -2866,21 +2930,55 @@ function announceJobStopped(reason) {
 // Callers snapshot the recovery record (jobRecovery.finish) BEFORE calling
 // this: it reads the live queue.
 function resetSenderState(reason) {
-  dropUnsentLines(reason);
+  var why = resetWhy(reason);
+  var unanswered = operatorLines(sentBuffer, function(i) {
+    return sentBufferInternal[i] === true;
+  });
+  // Nothing the operator sent vanishes without a line saying so - a job's
+  // unsent rest, a console command still queued, one that was written but
+  // will now never be answered.
+  reportDroppedLines(dropUnsentLines(reason), why);
+  reportUnansweredLines(unanswered, why);
   sentBuffer.length = 0;
+  sentBufferInternal.length = 0;
   status.comms.paused = false;
   alarmPendingAnswers = 0; // they were in sentBuffer
   clearTimeout(alarmAnswerTimer);
   alarmAnswerTimer = null;
 }
 
+// The reason, as the log line says it.
+function resetWhy(reason) {
+  switch (reason) {
+    case 'restart': return 'Restart';
+    case 'stopped': return 'Stop';
+    case 'firmware-reset': return 'controller reset';
+    case 'alarm-reset': return 'Clear Alarm';
+    case 'interrupted': return 'port terputus/ditutup';
+  }
+  return reason;
+}
+
+// The entries of `lines` that are not the sender's own bookkeeping.
+function operatorLines(lines, isInternal) {
+  var out = [];
+  for (var i = 0; i < lines.length; i++) {
+    if (!isInternal(i)) out.push(String(lines[i]));
+  }
+  return out;
+}
+
 // Ends the job and throws away every line not yet written to the controller,
 // but leaves sentBuffer alone: lines already in the controller's RX buffer
 // will still be answered (error and alarm without a reset), and those answers
-// must still pair with them. Returns the dropped lines.
+// must still pair with them. Returns the dropped lines - without the "$G"
+// lines addQToEnd() added on its own.
 function dropUnsentLines(reason) {
   announceJobStopped(reason); // reads the live queue - before the dump
-  var dropped = gcodeQueue.slice(queuePointer);
+  var dropped = operatorLines(gcodeQueue.slice(queuePointer), function(i) {
+    return internalQ.has(queuePointer + i);
+  });
+  internalQ.clear();
   clearInterval(queueCounter);
   if (jogWindow) {
     jogWindow.setProgressBar(0);
@@ -2904,6 +3002,17 @@ function reportDroppedLines(dropped, why) {
   io.sockets.emit('data', {
     'command': '',
     'response': dropped.length + ' baris belum terkirim dibatalkan karena ' + why + ' (' + shown + ')',
+    'type': 'error'
+  });
+}
+
+// Lines already written whose answer will now never come.
+function reportUnansweredLines(lines, why) {
+  if (lines.length === 0) return;
+  var shown = lines.slice(0, 3).join(', ') + (lines.length > 3 ? ', ...' : '');
+  io.sockets.emit('data', {
+    'command': '',
+    'response': lines.length + ' perintah terkirim tanpa jawaban dibatalkan karena ' + why + ' (' + shown + ')',
     'type': 'error'
   });
 }
@@ -2948,9 +3057,22 @@ function onFirmwareBanner() {
 // be sent right now - or null. Realtime bytes never come here: they always go.
 function commandRejection(line) {
   var up = String(line).toUpperCase();
+  if (!(status.comms.connectionStatus > 0) || !portIsOpen()) {
+    return 'port terputus / tidak terhubung - Connect dulu';
+  }
+  if (!status.machine.firmware.type) {
+    // send1Q() sends nothing until the firmware is identified - the line
+    // would just sit in the queue (bench: $I typed during the handshake)
+    return 'belum siap: handshake (controller belum terdeteksi)';
+  }
   if (!controllerReady && up !== '$I') {
     // $I stays allowed: its [VER:] reply is itself what marks the board ready
-    return 'Controller belum siap (connect/reset belum selesai) - tunggu sebentar, atau kirim $I';
+    return 'belum siap: handshake/reset belum selesai - tunggu sebentar, atau kirim $I';
+  }
+  if (status.comms.paused) {
+    // send1Q() sends nothing while paused - the line would just sit behind the
+    // held job (bench: $I typed during a Feed Hold vanished without a word)
+    return 'job sedang pause — Resume atau Stop dulu';
   }
   if (alarmPendingAnswers > 0) {
     // a new line now would take the "ok" of a line written before the alarm
@@ -2979,12 +3101,18 @@ function onAlarmReported() {
       var n = Math.min(alarmPendingAnswers, sentBuffer.length);
       alarmPendingAnswers = 0;
       if (n > 0) {
-        sentBuffer.splice(0, n);
-        io.sockets.emit('data', {
-          'command': '',
-          'response': n + ' jawaban dibatalkan (timeout setelah ALARM)',
-          'type': 'error'
+        var gone = sentBuffer.splice(0, n);
+        var goneInternal = sentBufferInternal.splice(0, n);
+        var mine = operatorLines(gone, function(i) {
+          return goneInternal[i] === true;
         });
+        if (mine.length > 0) { // the sender's own "$G" is not news to the operator
+          io.sockets.emit('data', {
+            'command': '',
+            'response': mine.length + ' jawaban dibatalkan (timeout setelah ALARM): ' + mine.slice(0, 3).join(', ') + (mine.length > 3 ? ', ...' : ''),
+            'type': 'error'
+          });
+        }
       }
     }, ALARM_ANSWER_TIMEOUT_MS);
   }
@@ -3058,6 +3186,30 @@ function isSpontaneousMessage(line) {
   return false;
 }
 
+// How a realtime byte is shown in the log (most are invisible characters).
+function realtimeLabel(ch) {
+  if (ch === '?' || ch === '!' || ch === '~') return ch;
+  if (ch === String.fromCharCode(0x18)) return 'Ctrl-X (Restart)';
+  return '0x' + ch.charCodeAt(0).toString(16).toUpperCase();
+}
+
+// Operator lines (not the sender's own "$G") still waiting to be sent.
+function unsentOperatorLineCount() {
+  var n = 0;
+  for (var i = queuePointer; i < gcodeQueue.length; i++) {
+    if (!internalQ.has(i)) n++;
+  }
+  return n;
+}
+
+// A console/UI command that has to wait behind a running job: say so, or it
+// looks lost. (While PAUSED it is refused outright - see commandRejection.)
+function noteIfQueuedBehind(line, ahead) {
+  if (ahead > 0) {
+    io.sockets.emit('data', { 'command': line, 'response': 'Ditunda: dikirim setelah ' + ahead + ' baris yang sudah antre', 'type': 'info' });
+  }
+}
+
 function isRealtimeCommand(line) {
   if (line.length !== 1) return false;
   return line === '?' || line === '!' || line === '~' || line === String.fromCharCode(0x18) || line.charCodeAt(0) >= 0x80;
@@ -3082,6 +3234,10 @@ function stopPort() {
   status.comms.interfaces.activeBaud = false;
   status.comms.connectionStatus = 0;
   controllerReady = false;
+  lastControllerRx = 0; // no port, nothing to watch
+  // the UI shows "Controller: " + runStatus - it kept the last report
+  // ("Hold:0") after the port closed
+  status.comms.runStatus = 'Disconnected';
   unlockAfterBanner = false; // a Clear Alarm still waiting for its banner is void now
   alarmActive = false; // re-learnt from the next controller's status
   status.machine.firmware.type = "";
@@ -3895,6 +4051,11 @@ function send1Q() {
     switch (status.machine.firmware.type) {
       case 'grbl':
         if ((gcodeQueue.length - queuePointer) > 0 && !status.comms.blocked && !status.comms.paused) {
+          if (!portIsOpen()) {
+            // the line would be "sent" into nothing and never answered
+            onPortLost('port tidak terbuka lagi');
+            return;
+          }
           spaceLeft = BufferSpace('grbl');
 
           // Do we have enough space in the buffer?
@@ -3902,6 +4063,7 @@ function send1Q() {
             gcode = gcodeQueue[queuePointer];
             queuePointer++;
             sentBuffer.push(gcode);
+            sentBufferInternal.push(internalQ.has(queuePointer - 1));
             machineSend(gcode + '\n', false);
             // debug_log('Sent: ' + gcode + ' Q: ' + (gcodeQueue.length - queuePointer) + ' Bspace: ' + (spaceLeft - gcode.length - 1));
           } else {
@@ -3936,14 +4098,19 @@ function send1Q() {
         }
         io.sockets.emit('jobComplete', data);
       }
-      status.comms.connectionStatus = 2; // finished
+      if (status.comms.connectionStatus > 0) { // never "reconnect" a port lost while sending
+        status.comms.connectionStatus = 2; // finished
+      }
       clearInterval(queueCounter);
       if (jogWindow) {
         jogWindow.setProgressBar(0);
       }
       gcodeQueue.length = 0; // Dump the Queye
       queuePointer = 0;
-      status.comms.connectionStatus = 2; // finished
+      internalQ.clear(); // its indexes belonged to the dumped queue
+      if (status.comms.connectionStatus > 0) {
+        status.comms.connectionStatus = 2; // finished
+      }
       jobCompletedMsg = ""
       jobStartTime = false;
     }
@@ -3971,9 +4138,11 @@ function addQToEnd(gcode) {
   }
   if (!gcode.startsWith("$J=") && modalCommandsRegExp.test(testGcode)) {
     gcodeQueue.push("$G");
+    internalQ.add(gcodeQueue.length - 1); // the sender's own modal refresh
   }
   if (gcode.match(/T([\d.]+)/i)) {
     gcodeQueue.push("$G");
+    internalQ.add(gcodeQueue.length - 1);
   }
 
 
