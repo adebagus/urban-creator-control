@@ -549,7 +549,7 @@ select {
   border: 1px solid #fa6800;
   border-left: 6px solid #fa6800;
   border-radius: 4px;
-  padding: 12px 14px;
+  padding: 12px 48px 12px 14px; /* right: room for the 44 px close (x) */
   margin: 0;
   font-size: 0.875rem;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.55);
@@ -569,17 +569,21 @@ select {
   color: #d6d6d6;
 }
 
-/* The (x) keeps a small glyph but a 32x32 click area (it used to be ~15x22 and hard to hit),
-   centred in the corner. */
+/* The (x): a 44x44 click area in the corner. It was 32x32, but the title line below it
+   in the markup is position:relative (global CSS) and so painted OVER the button,
+   covering all but ~12 px of it - measured live with elementFromPoint (bench 27 Nov:
+   "hard to close"). z-index lifts the button above the text, and the card keeps room
+   on the right so the text never runs under it. */
 .recovery-banner .recovery-banner-close {
   position: absolute;
-  top: 2px;
-  right: 2px;
+  z-index: 1;
+  top: 0;
+  right: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 32px;
-  min-height: 32px;
+  min-width: 44px;
+  min-height: 44px;
   padding: 0;
   border: 0;
   border-radius: 4px;

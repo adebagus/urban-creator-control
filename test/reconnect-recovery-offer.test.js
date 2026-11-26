@@ -384,6 +384,19 @@ test('visual: text, the close x and the muted lines meet WCAG AA (>= 4.5:1); the
 test('visual: the close x sits in the corner', () => {
   const x = cssRule('.recovery-banner .recovery-banner-close');
   assert.match(cssProp(x, 'position'), /absolute/);
-  assert.match(cssProp(x, 'top'), /\d+px/);
-  assert.match(cssProp(x, 'right'), /\d+px/);
+  assert.match(cssProp(x, 'top'), /^\d+(px)?$/);
+  assert.match(cssProp(x, 'right'), /^\d+(px)?$/);
+});
+
+// Bench 27 Nov: "hard to close". The title line after the button is position:relative
+// (global CSS), so it painted OVER the 32x32 button and left ~12 px of it clickable
+// (measured live with elementFromPoint). The button now sits above the text, is 44x44,
+// and the card keeps room on its right for it.
+test('visual: the close x is above the text (z-index) with a 44x44 click area, and the text keeps clear of it', () => {
+  const x = cssRule('.recovery-banner .recovery-banner-close');
+  assert.ok(parseInt(cssProp(x, 'z-index'), 10) >= 1, 'z-index must lift it above the position:relative title');
+  assert.ok(parseInt(cssProp(x, 'min-width'), 10) >= 44);
+  assert.ok(parseInt(cssProp(x, 'min-height'), 10) >= 44);
+  const pad = cssProp(cssRule('.recovery-banner'), 'padding').split(/\s+/);
+  assert.ok(parseInt(pad[1], 10) >= 44, 'right padding leaves room for the button: ' + pad.join(' '));
 });
