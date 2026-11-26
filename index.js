@@ -3415,7 +3415,10 @@ function quitAndCleanup(exitCode) {
 
 function parseFeedback(data) {
   //debug_log(data)
-  var state = data.substring(1, data.search(/(,|\|)/));
+  // "<Idle|MPos:...>" or a bare "<Alarm>" - the state ends at the first
+  // ',' '|' or '>' (without '>' a bare report read as state "<").
+  var stateEnd = data.search(/(,|\||>)/);
+  var state = data.substring(1, stateEnd === -1 ? data.length : stateEnd);
   status.comms.runStatus = state
   alarmActive = state.indexOf('Alarm') === 0; // the controller's own word on it
   // P9: this is where a job is known to have REALLY finished - controller
@@ -3572,7 +3575,6 @@ function parseFeedback(data) {
   var startF = data.search(/\|F:/i) + 3;
   if (startF > 3) {
     var f = data.replace(">", "").substr(startF).split(/,|\|/);
-    console.log(JSON.stringify(f, null, 4))
     if (Array.isArray(f)) {
       if (f[0]) {
         status.machine.overrides.realFeed = parseInt(f[0]);
