@@ -649,3 +649,36 @@ select {
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* The custom HTML titlebar (app/index.html #windowtitlebar) sits inside
+   the app's root wrapper (.window.bd-uc-accent, line 33 of index.html) -
+   Metro's OWN generic ".window" class, reused here purely for its cosmetic
+   flex/border/background styling, not for its stacking behaviour. That class
+   sets "position: relative; z-index: 1" (metro.css), and ANY positioned
+   element with an explicit (non-auto) z-index establishes a NEW stacking
+   context for all its descendants - so #windowtitlebar's own z-index only
+   ever competed against things INSIDE .window, never against a
+   Metro.dialog.create() overlay (.overlay, position:fixed; z-index:1040),
+   which is appended as a SEPARATE sibling of .window directly under <body>.
+   Giving the titlebar itself a bigger z-index (a first attempt at this fix)
+   could not fix that - it was still trapped one level down, confirmed with
+   CDP by opening a dialog and checking document.elementFromPoint() at the
+   close (X) button: the .overlay was still what received the click.
+   The real fix has two parts:
+     1. take the app's root wrapper OUT of its own separate stacking context
+        (z-index: auto - a positioned element still paints above plain
+        static content the same as before; it just stops trapping its
+        descendants), so #windowtitlebar's z-index is finally compared
+        directly against a dialog's .overlay at the SAME (body) level;
+     2. keep the titlebar's own z-index above ordinary dialogs, but below the
+        startup splash (#splash, z-index 2000), which is meant to block
+        absolutely everything, titlebar included.
+   This affects every Metro.dialog.create() in the app (Alarm, Error,
+   settings...) - see test/titlebar-dialog-zindex.test.js. */
+.window.bd-uc-accent {
+  z-index: auto;
+}
+#windowtitlebar {
+  position: relative;
+  z-index: 1900;
+}
