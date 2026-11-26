@@ -177,7 +177,7 @@ function createSim(opts = {}) {
     jobStartTime: false, jobCompletedMsg: '', laserTestOn: false, fluidncConfig: '', uploadedgcode: '',
     jogWindow: null, oldpinslist: [], echoNextStatusReport: false,
     controllerReady: opts.controllerReady === undefined ? true : opts.controllerReady,
-    alarmActive: false, alarmPendingAnswers: 0, alarmAnswerTimer: null,
+    alarmActive: false, alarmPendingAnswers: 0, alarmAnswerTimer: null, unlockAfterBanner: false,
     xPos: 0, yPos: 0, zPos: 0, aPos: 0, xOffset: 0, yOffset: 0, zOffset: 0, aOffset: 0,
     config: { posDecimals: 3, grblWaitTime: 1 },
     status: {

@@ -597,6 +597,9 @@ var echoNextStatusReport = false;
 // while false: the banner empties sentBuffer, so a line written in between
 // would have its answer paired with nothing - or with the next command.
 var controllerReady = false;
+// Clear Alarm (method 2) resets the controller, then unlocks it with $X once
+// the reset's banner says it is up - see onFirmwareBanner().
+var unlockAfterBanner = false;
 var statusLoop;
 var frontEndUpdateLoop, sysinfoUpdateLoop
 
@@ -2554,8 +2557,13 @@ io.on("connection", function(socket) {
           debug_log('Clearing Lockout');
           switch (status.machine.firmware.type) {
             case 'grbl':
-              addQRealtime('$X\n');
-              debug_log('Sent: $X');
+              // $X is a LINE: it is answered "ok" like any other, so it must
+              // be paired like one. Written past sentBuffer (as it used to be),
+              // its "ok" was taken by whichever command was in flight.
+              if (queueOperatorLine('$X') && gcodeQueue.length - queuePointer === 1) {
+                send1Q(); // nothing queued ahead of it - send now (a running job's own "ok"s reach it otherwise)
+              }
+              debug_log('Queued: $X');
               break;
           }
           debug_log('Resuming Queue Lockout');
@@ -2568,37 +2576,22 @@ io.on("connection", function(socket) {
           break;
         case 2:
           debug_log('Emptying Queue');
-          announceJobStopped('alarm-reset'); // before the dump below
           // P9: the dump below kills the job. Freeze its recovery record first (like
           // stop() and stopPort()) - otherwise the next "ok" on the emptied queue
           // looks like "every line sent" and, once the controller is Idle, the
           // record is wiped as "completed".
           jobRecovery.finish('interrupted');
-          status.comms.queue = 0
-          queuePointer = 0;
-          gcodeQueue.length = 0; // Dump the queue
-          sentBuffer.length = 0; // Dump bufferSizes
-          queuePointer = 0;
-          // Same as stop(): a dumped queue means a dead job - drop its start
-          // time and completion message so the next command's "ok" doesn't emit
-          // a jobComplete with them.
-          jobStartTime = false;
-          jobCompletedMsg = "";
+          resetSenderState('alarm-reset');
           debug_log('Clearing Lockout');
           switch (status.machine.firmware.type) {
             case 'grbl':
-              clearInterval(queueCounter);
-              if (jogWindow) {
-                jogWindow.setProgressBar(0);
-              }
               controllerReady = false; // until the banner of the reset below
+              // $X is sent when that banner arrives (onFirmwareBanner), as a
+              // normal paired line. It used to go out 500 ms later past
+              // sentBuffer: written before the banner the reset could wipe it,
+              // and its "ok" was taken by whatever was sent next.
+              unlockAfterBanner = true;
               addQRealtime(String.fromCharCode(0x18)); // ctrl-x
-              setTimeout(function() {
-                addQRealtime('$X\n');
-                debug_log('Sent: $X');
-              }, 500);
-              status.comms.blocked = false;
-              status.comms.paused = false;
               break;
           }
           var output = {
@@ -2910,6 +2903,11 @@ function onFirmwareBanner() {
     status.comms.connectionStatus = 2;
   }
   controllerReady = true;
+  if (unlockAfterBanner) { // Clear Alarm's $X: now it is a normal, paired line
+    unlockAfterBanner = false;
+    addQToEnd('$X');
+    send1Q();
+  }
 }
 
 // Why a line from the operator (console, UI buttons, jog, job start) must not
@@ -2969,6 +2967,7 @@ function stopPort() {
   status.comms.interfaces.activeBaud = false;
   status.comms.connectionStatus = 0;
   controllerReady = false;
+  unlockAfterBanner = false; // a Clear Alarm still waiting for its banner is void now
   status.machine.firmware.type = "";
   status.machine.firmware.version = ""; // get version
   status.machine.firmware.date = "";
