@@ -590,6 +590,13 @@ var queuePointer = 0;
 // status report it asks for is printed by this flag instead of by "?" being
 // the head of sentBuffer.
 var echoNextStatusReport = false;
+// False from the moment the port opens or a reset is sent until the
+// controller shows it is up: its "Grbl ..." banner, or the [VER:] line of $I
+// (a board on native USB, like the BluePill/Mythos, does not reset when the
+// port opens, so it may never print a banner on connect). Lines are not sent
+// while false: the banner empties sentBuffer, so a line written in between
+// would have its answer paired with nothing - or with the next command.
+var controllerReady = false;
 var statusLoop;
 var frontEndUpdateLoop, sysinfoUpdateLoop
 
@@ -1553,6 +1560,7 @@ io.on("connection", function(socket) {
 
           // Grbl $I parser
           if (data.indexOf("[VER:") === 0) {
+            controllerReady = true; // the handshake reply - see controllerReady
             // Extracting the full version (1.1f)
             const version = data.split(':')[1].split('.')[0] + '.' + data.split(':')[1].split('.')[1];
             // Extracting the date (20240402)
@@ -1721,6 +1729,12 @@ io.on("connection", function(socket) {
           // Machine Identification
           if (data.indexOf("Grbl") === 0 || data.indexOf("[FIRMWARE:grblHAL]") === 0) { // Check if it's Grbl
             debug_log(data)
+            if (data.indexOf("Grbl") === 0) { // the banner, not grblHAL's $I line
+              onFirmwareBanner();
+              command = undefined; // a banner answers nothing - log it unlabelled
+            } else {
+              controllerReady = true;
+            }
             status.comms.blocked = false;
             if (data.indexOf("GrblHAL") === 0) {
               status.machine.firmware.type = "grbl";
@@ -1890,7 +1904,7 @@ io.on("connection", function(socket) {
             switch (status.machine.firmware.type) {
               case 'grbl':
                 debug_log("[MSG:Reset to continue] -> Sending Reset")
-                addQRealtime(String.fromCharCode(0x18)); // ctrl-x
+                resetController('interrupted', 'firmware-reset'); // ctrl-x, same as every other reset
                 break;
             }
           }
@@ -1929,6 +1943,7 @@ io.on("connection", function(socket) {
         // Then try to connect
         // set status
         status.comms.connectionStatus = 1;
+        controllerReady = false; // until its banner or the [VER:] of $I
 
         // Log attempt 1
         debug_log("PORT INFO: Connected to " + port.path + " at " + port.baudRate);
@@ -2148,8 +2163,13 @@ io.on("connection", function(socket) {
                 addQRealtime(tosend);
               }
             } else {
-              addQToEnd(tosend);
-              queuedAny = true;
+              var why = commandRejection(tosend);
+              if (why) {
+                rejectCommand(tosend, why); // said in the log - never dropped silently
+              } else {
+                addQToEnd(tosend);
+                queuedAny = true;
+              }
             }
           }
         }
@@ -2182,8 +2202,9 @@ io.on("connection", function(socket) {
         debug_log('Adding jog commands to queue. Firmw=' + status.machine.firmware.type + ', blocked=' + status.comms.blocked + ', paused=' + status.comms.paused + ', Q=' + gcodeQueue.length);
         switch (status.machine.firmware.type) {
           case 'grbl':
-            addQToEnd('$J=G91G21' + dir + dist + feed);
-            send1Q();
+            if (queueOperatorLine('$J=G91G21' + dir + dist + feed)) {
+              send1Q();
+            }
             break;
           default:
             debug_log('ERROR: Unknown firmware!');
@@ -2216,8 +2237,9 @@ io.on("connection", function(socket) {
         debug_log('Adding jog commands to queue. blocked=' + status.comms.blocked + ', paused=' + status.comms.paused + ', Q=' + gcodeQueue.length);
         switch (status.machine.firmware.type) {
           case 'grbl':
-            addQToEnd('$J=G91G21X' + xincrement + " Y" + yincrement + " " + feed);
-            send1Q();
+            if (queueOperatorLine('$J=G91G21X' + xincrement + " Y" + yincrement + " " + feed)) {
+              send1Q();
+            }
             break;
           default:
             debug_log('ERROR: Unknown firmware!');
@@ -2569,6 +2591,7 @@ io.on("connection", function(socket) {
               if (jogWindow) {
                 jogWindow.setProgressBar(0);
               }
+              controllerReady = false; // until the banner of the reset below
               addQRealtime(String.fromCharCode(0x18)); // ctrl-x
               setTimeout(function() {
                 addQRealtime('$X\n');
@@ -2702,6 +2725,18 @@ function runJob(object) {
   //   completedMsg: "",
   //   data: "",
   // }
+
+  // Refused jobs leave nothing behind - checked before jobStartTime is stamped.
+  var firstLine = String(object.data || '').split('\n').map(function(l) {
+    return l.replace("%", "").split(';')[0].trim();
+  }).filter(function(l) {
+    return l.length > 0;
+  })[0];
+  var jobRefusal = firstLine !== undefined ? commandRejection(firstLine) : null;
+  if (jobRefusal) {
+    rejectCommand(object.fileName || firstLine, jobRefusal);
+    return;
+  }
 
   jobStartTime = false;
   var data = object.data
@@ -2857,8 +2892,53 @@ function resetController(recoveryState, reason) {
   if (status.comms.connectionStatus == 3 || status.comms.connectionStatus == 4) {
     status.comms.connectionStatus = 2;
   }
+  controllerReady = false; // until its banner
   addQRealtime(String.fromCharCode(0x18)); // ctrl-x
   debug_log('Sent: Code(0x18)');
+}
+
+// "Grbl ..." is printed only right after the controller reset: ctrl-x, power
+// up, its reset button, DTR - or the board's own reset on a hard limit, which
+// on Mythos comes BEFORE "ALARM:1" (bench_a0_log.txt). Whatever it had not
+// answered is gone, so the sender's picture of it goes too, whoever caused the
+// reset. A reset WE sent already froze the record as "stopped"; finish() is a
+// no-op then.
+function onFirmwareBanner() {
+  jobRecovery.finish('interrupted');
+  resetSenderState('firmware-reset');
+  if (status.comms.connectionStatus == 3 || status.comms.connectionStatus == 4) {
+    status.comms.connectionStatus = 2;
+  }
+  controllerReady = true;
+}
+
+// Why a line from the operator (console, UI buttons, jog, job start) must not
+// be sent right now - or null. Realtime bytes never come here: they always go.
+function commandRejection(line) {
+  if (!controllerReady && String(line).toUpperCase() !== '$I') {
+    // $I stays allowed: its [VER:] reply is itself what marks the board ready
+    return 'Controller belum siap (connect/reset belum selesai) - tunggu sebentar, atau kirim $I';
+  }
+  return null;
+}
+
+function rejectCommand(line, reason) {
+  io.sockets.emit('data', {
+    'command': line,
+    'response': 'Ditolak, tidak dikirim: ' + reason,
+    'type': 'error'
+  });
+}
+
+// Queue one operator line unless it must be refused right now. True if queued.
+function queueOperatorLine(line) {
+  var why = commandRejection(line);
+  if (why) {
+    rejectCommand(line, why);
+    return false;
+  }
+  addQToEnd(line);
+  return true;
 }
 
 // A console/UI line that is really a realtime command (?, !, ~, ctrl-x, and
@@ -2885,6 +2965,7 @@ function stopPort() {
   status.comms.interfaces.activePort = false;
   status.comms.interfaces.activeBaud = false;
   status.comms.connectionStatus = 0;
+  controllerReady = false;
   status.machine.firmware.type = "";
   status.machine.firmware.version = ""; // get version
   status.machine.firmware.date = "";
@@ -4207,6 +4288,7 @@ function stop(data) {
 
         debug_log('Cleaning Queue');
         if (!jogOnly) {
+          controllerReady = false; // the ctrl-x below resets it - until its banner
           setTimeout(function() {
             addQRealtime(String.fromCharCode(0x18)); // ctrl-x
             debug_log('Sent: Code(0x18)');

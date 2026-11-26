@@ -60,7 +60,7 @@ function harness() {
   const timers = [];
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uc-stale-'));
   const ctx = {
-    gcodeQueue: [], queuePointer: 0, sentBuffer: [], statusLoop: null, queueCounter: null,
+    gcodeQueue: [], queuePointer: 0, sentBuffer: [], statusLoop: null, queueCounter: null, controllerReady: true,
     status: {
       comms: { connectionStatus: 2, blocked: false, paused: false, runStatus: 'Idle', queue: 0, alarm: '', interfaces: { type: 'usb' } },
       machine: { modals: {}, firmware: { type: 'grbl', platform: 'grbl', rxBufferSize: 254, blockBufferSize: '35', version: '', date: '', buffer: '' }, tool: { nexttool: {} } },
@@ -79,7 +79,7 @@ function harness() {
   });
   vm.createContext(ctx);
   vm.runInContext(
-    MODAL_VARS + ['addQToEnd', 'send1Q', 'BufferSpace', 'machineSend', 'addQRealtime', 'runJob', 'announceJobStopped', 'resetSenderState', 'dropUnsentLines', 'resetController', 'isRealtimeCommand', 'stopPort', 'stop']
+    MODAL_VARS + ['commandRejection', 'rejectCommand', 'queueOperatorLine', 'addQToEnd', 'send1Q', 'BufferSpace', 'machineSend', 'addQRealtime', 'runJob', 'announceJobStopped', 'resetSenderState', 'dropUnsentLines', 'resetController', 'isRealtimeCommand', 'stopPort', 'stop']
       .map(grabFunction).join('\n'),
     ctx
   );
@@ -101,6 +101,7 @@ function harness() {
       ctx.port = { isOpen: true, write(s) { written.push(s); } };
       ctx.status.comms.connectionStatus = 2;
       ctx.status.machine.firmware.type = 'grbl';
+      ctx.controllerReady = true; // its banner / [VER:] arrived (see test/sender-firmware-reset.test.js)
     },
     // Sends a command the way the client does and answers "ok" if it went out.
     command(cmd) {
@@ -110,8 +111,11 @@ function harness() {
       if (sent) h.ack();
       return sent;
     },
-    stop(data) { ctx.stop(data || { stop: true, jog: false, abort: false }); },
-    clearAlarm(method) { clearAlarmHandler(method); },
+    // Both reset the controller (ctrl-x); its banner arrives long before the
+    // operator's next command - the window before it is covered by
+    // test/sender-firmware-reset.test.js, not here.
+    stop(data) { ctx.stop(data || { stop: true, jog: false, abort: false }); ctx.controllerReady = true; },
+    clearAlarm(method) { clearAlarmHandler(method); ctx.controllerReady = true; },
     jobCompleteEvents() { return emitted.filter((e) => e[0] === 'jobComplete').map((e) => e[1]); },
     jobStoppedEvents() { return emitted.filter((e) => e[0] === 'jobStopped').map((e) => e[1]); },
     resetCapture() { written.length = 0; emitted.length = 0; },

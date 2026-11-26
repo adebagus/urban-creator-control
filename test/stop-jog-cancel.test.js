@@ -37,7 +37,7 @@ function harness() {
   const emitted = [];
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uc-stopjog-'));
   const ctx = {
-    gcodeQueue: [], queuePointer: 0, sentBuffer: [], queueCounter: null,
+    gcodeQueue: [], queuePointer: 0, sentBuffer: [], queueCounter: null, controllerReady: true,
     status: {
       comms: { connectionStatus: 2, blocked: false, paused: false, runStatus: 'Idle', queue: 0, alarm: '', interfaces: { type: 'usb' } },
       machine: { modals: {}, firmware: { type: 'grbl', platform: 'grbl', rxBufferSize: 254, blockBufferSize: '35', version: '', date: '', buffer: '' }, tool: { nexttool: {} } },
@@ -54,7 +54,7 @@ function harness() {
     getPlannerBlocks: () => 35,
   });
   vm.createContext(ctx);
-  vm.runInContext(MODAL_VARS + ['addQToEnd', 'addQRealtime', 'send1Q', 'BufferSpace', 'machineSend', 'runJob', 'announceJobStopped', 'resetSenderState', 'dropUnsentLines', 'stop'].map(grabFunction).join('\n'), ctx);
+  vm.runInContext(MODAL_VARS + ['commandRejection', 'rejectCommand', 'queueOperatorLine', 'addQToEnd', 'addQRealtime', 'send1Q', 'BufferSpace', 'machineSend', 'runJob', 'announceJobStopped', 'resetSenderState', 'dropUnsentLines', 'stop'].map(grabFunction).join('\n'), ctx);
   const h = {
     ctx, written, emitted,
     // "ok" for the oldest line in flight
@@ -213,7 +213,7 @@ test('structure: "running" is judged BEFORE the queue is dumped, and the jog-onl
   assert.match(src, /var jogOnly = !!\(data && data\.jog\) && !jobRunning;/);
   assert.match(src, /if \(jogOnly\) \{\s*addQRealtime\(String\.fromCharCode\(0x85\)\)/);
   assert.match(src, /if \(!data\.abort && !jogOnly\)/);
-  assert.match(src, /if \(!jogOnly\) \{\s*setTimeout/);
+  assert.match(src, /if \(!jogOnly\) \{\s*controllerReady = false;[^\n]*\n\s*setTimeout/);
   assert.ok(!/[^.]data\.jog\)\s*\{/.test(src.replace('!!(data && data.jog)', '')), 'no other raw data.jog branch is left');
   assert.match(src, /connectionStatus == 3 \|\| status\.comms\.connectionStatus == 4/);
   assert.match(src, /jobRecovery\.isTracking\(\)/);
