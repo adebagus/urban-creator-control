@@ -216,6 +216,24 @@ test('a normal "Port closed" (stopPort) also clears it', () => {
   assert.equal(sim.ctx.status.comms.runStatus, 'Disconnected');
 });
 
+// --------------------------------------------------------------- Esc
+
+test('the keyboard Abort shortcut (Esc) soft-resets as before, and now says so in the log: "Reset (Esc)"', () => {
+  const sim = connectedAndPolling();
+  sim.ctx.stop({ stop: false, jog: false, abort: true, key: 'esc' });
+  sim.advance(300);
+  assert.equal(sim.wire[sim.wire.length - 1], String.fromCharCode(0x18), 'still a soft reset');
+  assert.ok(sim.log.some((l) => l.command === 'Reset (Esc)'), JSON.stringify(sim.log));
+});
+
+test('Stop from the ribbon (no key) logs no "Reset (...)" line; an odd key name is not echoed raw', () => {
+  const sim = connectedAndPolling();
+  sim.ctx.stop({ stop: true, jog: false, abort: false });
+  assert.ok(!sim.log.some((l) => /^Reset \(/.test(l.command)));
+  sim.ctx.stop({ stop: false, jog: false, abort: true, key: '<img src=x>' });
+  assert.ok(sim.log.some((l) => l.command === 'Reset (keyboard)'));
+});
+
 test('a console command typed during a running job says it waits behind the job', () => {
   const sim = connectedAndPolling();
   sim.ctx.runJob({ isJob: true, data: 'G1 X1 F100\nG1 X2\nG1 X3', fileName: 'q.nc' });

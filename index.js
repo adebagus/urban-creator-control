@@ -4542,6 +4542,17 @@ function stop(data) {
     if (!jogOnly) {
       jobRecovery.finish('stopped');
     }
+    if (!jogOnly && data && typeof data.key === 'string' && data.key) {
+      // The keyboard's "Abort / Emergency" shortcut (Esc by default, upstream
+      // OpenBuilds since v1.0.155) soft-resets the controller: say so, or the
+      // banner that follows looks unexplained.
+      var keyName = /^[a-z0-9+\-*\/.]{1,12}$/i.test(data.key) ? data.key.charAt(0).toUpperCase() + data.key.slice(1) : 'keyboard';
+      io.sockets.emit('data', {
+        'command': 'Reset (' + keyName + ')',
+        'response': 'Shortcut "Abort / Emergency" (' + keyName + ') ditekan: soft reset dikirim ke controller. Tombol bisa diubah di Keyboard Shortcuts.',
+        'type': 'info'
+      });
+    }
     status.comms.paused = true;
     debug_log('STOP');
     switch (status.machine.firmware.type) {

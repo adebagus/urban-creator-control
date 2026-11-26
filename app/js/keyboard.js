@@ -317,7 +317,8 @@ function bindKeys() {
         socket.emit('stop', {
           stop: false,
           jog: false,
-          abort: true
+          abort: true,
+          key: keyboardShortcuts.estop // so the log says why the controller just reset
         })
       });
     }
