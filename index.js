@@ -1562,6 +1562,12 @@ io.on("connection", function(socket) {
         parser.on("data", function(data) {
           //console.log(data)
           var command = sentBuffer[0];
+          // A line the controller prints on its own is not the answer to the
+          // command in flight - it is logged without that command's label
+          // (bench: the banner was logged as "[$309=1]").
+          if (isSpontaneousMessage(data)) {
+            command = undefined;
+          }
 
           if (command == "$CD" && data != "ok") {
             fluidncConfig = fluidncConfig += data + "\n"
@@ -1743,8 +1749,7 @@ io.on("connection", function(socket) {
           if (data.indexOf("Grbl") === 0 || data.indexOf("[FIRMWARE:grblHAL]") === 0) { // Check if it's Grbl
             debug_log(data)
             if (data.indexOf("Grbl") === 0) { // the banner, not grblHAL's $I line
-              onFirmwareBanner();
-              command = undefined; // a banner answers nothing - log it unlabelled
+              onFirmwareBanner(); // (logged unlabelled - see isSpontaneousMessage)
             } else {
               controllerReady = true;
             }
@@ -1859,11 +1864,11 @@ io.on("connection", function(socket) {
                 debug_log('ALARM: ' + alarmCode + ' - ' + grblStrings.alarms(alarmCode));
                 status.comms.alarm = alarmCode + ' - ' + grblStrings.alarms(alarmCode)
                 if (alarmCode != 5) {
-                  io.sockets.emit("toastErrorAlarm", 'ALARM: ' + alarmCode + ' - ' + grblStrings.alarms(alarmCode) + " [ " + command + " ]")
+                  io.sockets.emit("toastErrorAlarm", 'ALARM: ' + alarmCode + ' - ' + grblStrings.alarms(alarmCode))
                 }
                 var output = {
                   'command': '',
-                  'response': 'ALARM: ' + alarmCode + ' - ' + grblStrings.alarms(alarmCode) + " [ " + command + " ]",
+                  'response': 'ALARM: ' + alarmCode + ' - ' + grblStrings.alarms(alarmCode),
                   'type': 'error'
                 }
                 io.sockets.emit('data', output);
@@ -3013,6 +3018,22 @@ function queueOperatorLine(line) {
 // the 0x80-0xFF override/jog-cancel bytes). These act the moment the
 // controller receives them and never produce an "ok", so they must not enter
 // gcodeQueue/sentBuffer.
+// Lines the controller prints on its own, not as the answer to a command:
+// Grbl 1.1's unsolicited feedback messages, plus the Mythos ones printed at
+// boot/reset, on E-stop and during M6 (GRBL_Mythos docs). Replies such as
+// "[MSG:Caution: Unlocked]" ($X), "[MSG:$309: reset to apply]" or
+// "[MSG:A is Y2 ($309=1): A10.000]" come before their own command's ok/error
+// and keep its label - they are not in this list.
+var SPONTANEOUS_MESSAGES = ["[MSG:Reset to continue]", "[MSG:'$H'|'$X' to unlock]", "[MSG:Check Limits]", "[MSG:Check Door]", "[MSG:Pgm End]", "[MSG:Restoring spindle]", "[MSG:E-stop", "[MSG:RST:", "[MSG:FAULT:", "[MSG:PWRLOSS", "[MSG:Power-on", "[MSG:Settings lost", "[MSG:TLO cleared by reset", "[MSG:Tool change", "[MSG:Tool "];
+
+function isSpontaneousMessage(line) {
+  if (line.indexOf('Grbl') === 0 || line.indexOf('ALARM') === 0) return true; // banner, alarm
+  for (var i = 0; i < SPONTANEOUS_MESSAGES.length; i++) {
+    if (line.indexOf(SPONTANEOUS_MESSAGES[i]) === 0) return true;
+  }
+  return false;
+}
+
 function isRealtimeCommand(line) {
   if (line.length !== 1) return false;
   return line === '?' || line === '!' || line === '~' || line === String.fromCharCode(0x18) || line.charCodeAt(0) >= 0x80;
