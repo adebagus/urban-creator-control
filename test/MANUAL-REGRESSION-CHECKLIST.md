@@ -369,6 +369,21 @@ Setelah TIAP langkah, perhatikan dua hal di log: (1) setiap jawaban berlabel per
 - [ ] **Clear Alarm (ribbon)** saat ALARM: board reset, `$X` terkirim sesudah banner dengan label `[$X]`,
       `[MSG:'$H'|'$X' to unlock]` tampil tanpa label.
 - [ ] **Pause lalu cabut USB, connect lagi**: perintah konsol langsung terkirim (dulu macet selamanya).
+- [ ] **Konsol saat job PAUSE (Hold)** *(bench ulang 27 Nov)*: jalankan job, Pause, ketik `$I`.
+      **Harapan**: tidak terkirim, dan log menulis
+      `Ditolak, tidak dikirim: job sedang pause — Resume atau Stop dulu`. Tombol Resume/`~`, `?`, Stop
+      tetap bekerja. Setelah Resume, perintah konsol diterima lagi.
+- [ ] **USB tersenggol sesaat** *(bench ulang 27 Nov; board tetap hidup, Windows re-enumerate COM)*:
+      saat job Pause/berjalan, cabut-colok USB cepat. **Harapan dalam ±3 detik**: log
+      `Koneksi ke controller terputus (tidak ada balasan dari controller selama 3 detik) - port ditutup`,
+      status Not Connected, `Controller: Disconnected` (bukan `Hold:0`), Job Queue 0, baris job yang
+      dibatalkan disebut di log. Perintah konsol sesudahnya: `Ditolak ... port terputus`. Connect lagi ke
+      COM yang sama berhasil; job TIDAK berlanjut sendiri; notifikasi unfinished job muncul.
+- [ ] **Tidak ada pemutusan palsu**: biarkan terhubung idle 5 menit, jalankan `$H` dan satu job pendek,
+      tahan E-stop beberapa detik — koneksi TIDAK putus sendiri.
+- [ ] **Esc**: tekan Esc saat idle → banner reset muncul dengan baris log `Reset (Esc)` sebelumnya.
+- [ ] **Tutup banner "Pekerjaan belum selesai ditemukan"**: klik di mana saja dalam kotak (x) di pojok
+      kanan atas → banner tertutup pada klik pertama.
 - [ ] **Advanced Settings Mythos**: `$309`, `$319`, `$329` tampil dengan nama/keterangan (bukan `;unknown`
       di log `$$`, bukan kunci merah di tabel). Di firmware non-Mythos tetap seperti sebelumnya.
 
