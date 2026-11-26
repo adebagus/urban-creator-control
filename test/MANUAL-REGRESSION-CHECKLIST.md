@@ -339,6 +339,41 @@ yang dikirim klien (`$$`) tidak pernah sampai ke controller, dan log palsu
 
 ---
 
+## P12 — Keandalan antrean, reset & pemasangan jawaban (bench 26 Nov 2026)
+
+**WAJIB lolos di board nyata (UC-100, Mythos 53AS 4A-AS) sebelum rilis/installer apa pun.** Semua skenario
+di bawah sudah punya tes otomatis (mock serial, `test/bench-sequence.test.js` dan `test/sender-*.test.js`);
+yang dicek di sini adalah board dan USB sungguhan. Acuan format jawaban: `D:\GRBL_Mythos\bench_a0_log.txt`.
+Setelah TIAP langkah, perhatikan dua hal di log: (1) setiap jawaban berlabel perintahnya sendiri,
+(2) banner `Grbl 1.1f [GRBL Mythos ...]`, `ALARM:`, dan `[MSG:...]` spontan tampil **tanpa label** `[...]`.
+
+- [ ] **Skenario bench utama** (satu per satu dari konsol, tunggu jawaban tiap baris):
+      `$309=1` → `$21=1` → gerak Y pelan (`G21 G91 G1 Y60 F60`) → picu switch limit → `ALARM:1` →
+      tombol **Restart Grbl** (BUKAN Clear Alarm) → `$X` → `$309=0` → Restart → `G91 G1 A10` →
+      `$309=1` → Restart → `G90 G0 A0`.
+      **Harapan**: `G90 G0 A0` dijawab `ok` dengan label `[G90 G0 A0]`, **Job Queue: 0**, tidak ada
+      `error:33` di mana pun (A10 di mode 0 sah). Banner tidak pernah berlabel `[$309=1]`.
+- [ ] **Restart di tengah job**: jalankan job panjang, tekan Restart Grbl. **Harapan**: mesin reset SEKETIKA
+      (bukan setelah job selesai), job tercatat berhenti, Job Queue 0, perintah konsol berikutnya dijawab
+      dengan labelnya sendiri.
+- [ ] **Error di tengah job**: buat job yang sengaja ditolak di tengah (mis. baris `G91 G1 A10` dengan
+      `$309=1`). **Harapan**: log menulis `N baris belum terkirim dibatalkan karena error (...)`; ketik `$X`
+      atau `$G` sesudahnya → **mesin TIDAK bergerak melanjutkan sisa job lama** (dulu sisa job jalan lagi).
+- [ ] **Perintah saat ALARM**: setelah ALARM, ketik `G0 X10` → ditolak dengan pesan
+      `Mesin ALARM — kirim $X/$H dulu`, tidak terkirim. `$X`, `$H`, `$$` tetap terkirim. Tombol Stop/Feed
+      Hold/`?` tetap berfungsi.
+- [ ] **Perintah sesaat setelah Restart**: klik Restart lalu SEGERA ketik `$G`. **Harapan**: ditolak dengan
+      pesan `Controller belum siap ...` (tidak hilang diam-diam), atau terkirim normal kalau banner sudah tiba.
+- [ ] **Connect BluePill/Mythos tanpa reset (USB CDC)**: connect; perintah dari konsol baru diterima setelah
+      jawaban `$I` (`[VER:...]`) atau banner. Tidak ada perintah yang hilang tanpa pesan.
+- [ ] **Clear Alarm (ribbon)** saat ALARM: board reset, `$X` terkirim sesudah banner dengan label `[$X]`,
+      `[MSG:'$H'|'$X' to unlock]` tampil tanpa label.
+- [ ] **Pause lalu cabut USB, connect lagi**: perintah konsol langsung terkirim (dulu macet selamanya).
+- [ ] **Advanced Settings Mythos**: `$309`, `$319`, `$329` tampil dengan nama/keterangan (bukan `;unknown`
+      di log `$$`, bukan kunci merah di tabel). Di firmware non-Mythos tetap seperti sebelumnya.
+
+---
+
 ## Ringkasan: Area Paling Berisiko (prioritaskan waktu review di sini)
 
 1. **🔴 Laser profile homing behavior ($44/$45)** — ini SATU-SATUNYA test di
