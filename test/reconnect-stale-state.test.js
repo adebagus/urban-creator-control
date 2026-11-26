@@ -79,7 +79,7 @@ function harness() {
   });
   vm.createContext(ctx);
   vm.runInContext(
-    MODAL_VARS + ['addQToEnd', 'send1Q', 'BufferSpace', 'machineSend', 'addQRealtime', 'runJob', 'announceJobStopped', 'resetSenderState', 'resetController', 'isRealtimeCommand', 'stopPort', 'stop']
+    MODAL_VARS + ['addQToEnd', 'send1Q', 'BufferSpace', 'machineSend', 'addQRealtime', 'runJob', 'announceJobStopped', 'resetSenderState', 'dropUnsentLines', 'resetController', 'isRealtimeCommand', 'stopPort', 'stop']
       .map(grabFunction).join('\n'),
     ctx
   );
@@ -429,6 +429,9 @@ test('structural: every place that dumps the queue announces first, or is the ge
   const sites = [];
   lines.forEach((line, i) => { if (/^\s*gcodeQueue\.length\s*=\s*0/.test(line)) sites.push(i); });
   assert.ok(sites.length >= 4);
+  // resetSenderState() / dropUnsentLines() are the shared dumps: they announce,
+  // and freezing the recovery record is their CALLERS' job (checked below).
+  const SHARED_DUMP = /^function (resetSenderState|dropUnsentLines)\(/;
   const scopeStart = (i) => {
     let start = i;
     while (start > 0 && !/^function \w+\(|^\s*socket\.on\(/.test(lines[start])) start--;
@@ -442,23 +445,25 @@ test('structural: every place that dumps the queue announces first, or is the ge
     const isGenuineCompletion = /io\.sockets\.emit\('jobComplete'/.test(scope);
     assert.ok(announces || isGenuineCompletion,
       where + ' dumps the queue without announcing a stopped job - a job killed here would vanish from the job history');
-    // resetSenderState() is the shared dump: freezing the record is its CALLERS' job (checked below).
-    if (!isGenuineCompletion && !/^function resetSenderState\(/.test(lines[start])) {
+    if (!isGenuineCompletion && !SHARED_DUMP.test(lines[start])) {
       // a job killed here must keep its recovery record: freeze it BEFORE the dump, or the next
       // "ok" on the emptied queue reads as "every line sent" and the record is wiped as "completed"
       assert.ok(/jobRecovery\.finish\(/.test(scope),
         where + ' dumps the queue without freezing the recovery record (jobRecovery.finish) - Clear Alarm used to erase the record this way');
     }
   }
-  // Every caller of the shared dump freezes the recovery record before calling it.
+  // Every caller of a shared dump freezes the recovery record before calling it
+  // (resetSenderState calling dropUnsentLines is the same dump, not a caller).
   const calls = [];
-  lines.forEach((line, i) => { if (/resetSenderState\(/.test(line) && !/^function resetSenderState\(/.test(line)) calls.push(i); });
-  assert.ok(calls.length >= 2, 'expected resetSenderState() to have callers');
+  lines.forEach((line, i) => {
+    if (/\b(resetSenderState|dropUnsentLines)\(/.test(line) && !SHARED_DUMP.test(line) && !SHARED_DUMP.test(lines[scopeStart(i)])) calls.push(i);
+  });
+  assert.ok(calls.length >= 2, 'expected the shared dumps to have callers');
   for (const i of calls) {
     const start = scopeStart(i);
     const before = lines.slice(start, i).join('\n');
     assert.ok(/jobRecovery\.finish\(/.test(before),
-      'index.js line ' + (i + 1) + ' (' + lines[start].trim().slice(0, 40) + ') calls resetSenderState() without freezing the recovery record first');
+      'index.js line ' + (i + 1) + ' (' + lines[start].trim().slice(0, 40) + ') dumps through a shared dump without freezing the recovery record first');
   }
 });
 

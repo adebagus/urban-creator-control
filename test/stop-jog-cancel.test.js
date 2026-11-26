@@ -54,7 +54,7 @@ function harness() {
     getPlannerBlocks: () => 35,
   });
   vm.createContext(ctx);
-  vm.runInContext(MODAL_VARS + ['addQToEnd', 'addQRealtime', 'send1Q', 'BufferSpace', 'machineSend', 'runJob', 'announceJobStopped', 'resetSenderState', 'stop'].map(grabFunction).join('\n'), ctx);
+  vm.runInContext(MODAL_VARS + ['addQToEnd', 'addQRealtime', 'send1Q', 'BufferSpace', 'machineSend', 'runJob', 'announceJobStopped', 'resetSenderState', 'dropUnsentLines', 'stop'].map(grabFunction).join('\n'), ctx);
   const h = {
     ctx, written, emitted,
     // "ok" for the oldest line in flight

@@ -65,7 +65,7 @@ const FUNCTIONS = [
   'BufferSpace', 'send1Q', 'addQToEnd', 'addQRealtime', 'machineSend', 'parseFeedback',
   'announceJobStopped', 'stop', 'runJob', 'pause', 'unpause', 'stopPort',
   // added by the reliability work - skipped when absent (pre-fix code)
-  'resetSenderState', 'resetController', 'isRealtimeCommand', 'dropUnsentLines',
+  'resetSenderState', 'resetController', 'isRealtimeCommand', 'dropUnsentLines', 'reportDroppedLines',
   'commandRejection', 'rejectCommand', 'onAlarmReported', 'onFirmwareBanner', 'isSpontaneousMessage',
   'parseVersionLine',
 ];

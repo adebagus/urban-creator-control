@@ -1849,7 +1849,7 @@ io.on("connection", function(socket) {
             status.comms.connectionStatus = 5;
           } else if (data.indexOf('wait') === 0) { // Got wait from Repetier -> ignore
             // do nothing
-          } else if (data.indexOf('error') === 0) { // Error received -> stay blocked stops queue
+          } else if (data.indexOf('error') === 0) { // Error received -> the job stops here
             switch (status.machine.firmware.type) {
               case 'grbl':
                 // sentBuffer.shift();
@@ -1870,6 +1870,14 @@ io.on("connection", function(socket) {
                 break;
             }
             debug_log("error;")
+            // The rejected line ends the job. Its remaining lines used to stay
+            // queued, and the next "ok" from ANY later command (even an $X
+            // typed to recover) streamed them - the old job carried on moving
+            // the machine before the operator's own command. Recovery snapshot
+            // first, while the rejected line still heads sentBuffer, so the
+            // record points at it.
+            jobRecovery.finish('stopped');
+            reportDroppedLines(dropUnsentLines('error'), 'error');
             sentBuffer.shift();
             status.comms.connectionStatus = 5;
           } else if (data === ' ') {
@@ -2799,22 +2807,43 @@ function announceJobStopped(reason) {
 // Callers snapshot the recovery record (jobRecovery.finish) BEFORE calling
 // this: it reads the live queue.
 function resetSenderState(reason) {
-  announceJobStopped(reason); // also reads the live queue - before the dump
+  dropUnsentLines(reason);
+  sentBuffer.length = 0;
+  status.comms.paused = false;
+}
+
+// Ends the job and throws away every line not yet written to the controller,
+// but leaves sentBuffer alone: lines already in the controller's RX buffer
+// will still be answered (error and alarm without a reset), and those answers
+// must still pair with them. Returns the dropped lines.
+function dropUnsentLines(reason) {
+  announceJobStopped(reason); // reads the live queue - before the dump
+  var dropped = gcodeQueue.slice(queuePointer);
   clearInterval(queueCounter);
   if (jogWindow) {
     jogWindow.setProgressBar(0);
   }
   gcodeQueue.length = 0;
   queuePointer = 0;
-  sentBuffer.length = 0;
   jobStartTime = false;
   jobCompletedMsg = "";
   status.comms.queue = 0;
   status.comms.blocked = false;
-  status.comms.paused = false;
   // "Job Queue: N" in the UI only changes when a line is sent - without this
   // it kept showing the dead queue's count.
   io.sockets.emit('queueCount', [0, 0]);
+  return dropped;
+}
+
+// "N baris ... dibatalkan" for the log, naming the first few lines.
+function reportDroppedLines(dropped, why) {
+  if (dropped.length === 0) return;
+  var shown = dropped.slice(0, 3).join(', ') + (dropped.length > 3 ? ', ...' : '');
+  io.sockets.emit('data', {
+    'command': '',
+    'response': dropped.length + ' baris belum terkirim dibatalkan karena ' + why + ' (' + shown + ')',
+    'type': 'error'
+  });
 }
 
 // Soft-reset the controller (ctrl-x). It is a realtime byte: it must go out
