@@ -66,7 +66,7 @@ const FUNCTIONS = [
   'announceJobStopped', 'stop', 'runJob', 'pause', 'unpause', 'stopPort',
   // added by the reliability work - skipped when absent (pre-fix code)
   'resetSenderState', 'resetController', 'isRealtimeCommand', 'dropUnsentLines', 'reportDroppedLines',
-  'commandRejection', 'rejectCommand', 'queueOperatorLine', 'onAlarmReported', 'onFirmwareBanner', 'isSpontaneousMessage',
+  'commandRejection', 'rejectCommand', 'queueOperatorLine', 'onAlarmReported', 'noteAnswerAfterAlarm', 'onFirmwareBanner', 'isSpontaneousMessage',
   'parseVersionLine',
 ];
 const SOCKET_HANDLERS = ['runCommand', 'resetMachine', 'clearAlarm', 'jog', 'jogXY', 'jogTo', 'closePort'];

@@ -600,6 +600,16 @@ var controllerReady = false;
 // Clear Alarm (method 2) resets the controller, then unlocks it with $X once
 // the reset's banner says it is up - see onFirmwareBanner().
 var unlockAfterBanner = false;
+// The controller is in ALARM (an "ALARM:" line, or "Alarm" in its status):
+// only $ commands may be sent until it is unlocked.
+var alarmActive = false;
+// Lines written before an alarm that did NOT reset the controller may still
+// be answered - or never, if it did reset without a banner. They get
+// ALARM_ANSWER_TIMEOUT_MS; then they are forgotten (with a log line) so the
+// next command is not paired with one of them.
+var ALARM_ANSWER_TIMEOUT_MS = 3000;
+var alarmPendingAnswers = 0;
+var alarmAnswerTimer = null;
 var statusLoop;
 var frontEndUpdateLoop, sysinfoUpdateLoop
 
@@ -1832,6 +1842,7 @@ io.on("connection", function(socket) {
             if (status.machine.firmware.type === "grbl") {
               // debug_log('got OK from ' + command)
               command = sentBuffer.shift();
+              noteAnswerAfterAlarm();
             }
             if (command == "$CD") {
               io.sockets.emit('fluidncConfig', fluidncConfig);
@@ -1858,6 +1869,7 @@ io.on("connection", function(socket) {
                 io.sockets.emit('data', output);
                 break;
             }
+            onAlarmReported();
             status.comms.connectionStatus = 5;
           } else if (data.indexOf('WARNING: After HALT you should HOME as position is currently unknown') != -1) { //} || data.indexOf('HALTED') === 0) {
             status.comms.connectionStatus = 2;
@@ -1896,11 +1908,18 @@ io.on("connection", function(socket) {
             jobRecovery.finish('stopped');
             reportDroppedLines(dropUnsentLines('error'), 'error');
             sentBuffer.shift();
+            noteAnswerAfterAlarm();
             status.comms.connectionStatus = 5;
           } else if (data === ' ') {
             // nothing
           } else {
             // do nothing with +data
+          }
+
+          if (data.indexOf("[MSG:Caution: Unlocked]") === 0) {
+            alarmActive = false; // $X accepted
+          } else if (data.indexOf("[MSG:'$H'|'$X' to unlock]") === 0) {
+            alarmActive = true; // came up alarm-locked
           }
 
           if (data.indexOf("[MSG:Reset to continue]") === 0) {
@@ -2838,6 +2857,9 @@ function resetSenderState(reason) {
   dropUnsentLines(reason);
   sentBuffer.length = 0;
   status.comms.paused = false;
+  alarmPendingAnswers = 0; // they were in sentBuffer
+  clearTimeout(alarmAnswerTimer);
+  alarmAnswerTimer = null;
 }
 
 // Ends the job and throws away every line not yet written to the controller,
@@ -2913,11 +2935,59 @@ function onFirmwareBanner() {
 // Why a line from the operator (console, UI buttons, jog, job start) must not
 // be sent right now - or null. Realtime bytes never come here: they always go.
 function commandRejection(line) {
-  if (!controllerReady && String(line).toUpperCase() !== '$I') {
+  var up = String(line).toUpperCase();
+  if (!controllerReady && up !== '$I') {
     // $I stays allowed: its [VER:] reply is itself what marks the board ready
     return 'Controller belum siap (connect/reset belum selesai) - tunggu sebentar, atau kirim $I';
   }
+  if (alarmPendingAnswers > 0) {
+    // a new line now would take the "ok" of a line written before the alarm
+    return 'menunggu jawaban baris yang terkirim sebelum ALARM (maks ' + (ALARM_ANSWER_TIMEOUT_MS / 1000) + ' detik) - coba lagi sebentar';
+  }
+  if (alarmActive && (up.charAt(0) !== '$' || up.indexOf('$J=') === 0)) {
+    return 'Mesin ALARM — kirim $X/$H dulu';
+  }
   return null;
+}
+
+// An "ALARM:N" line. The job is over: its unsent lines are dropped. Lines
+// already written stay in sentBuffer - if the controller reset, its banner
+// empties it (on Mythos the banner comes first); if it did not, they may still
+// be answered, and those answers must still pair with them.
+function onAlarmReported() {
+  alarmActive = true;
+  jobRecovery.finish('interrupted');
+  reportDroppedLines(dropUnsentLines('alarm'), 'ALARM');
+  clearTimeout(alarmAnswerTimer);
+  alarmAnswerTimer = null;
+  alarmPendingAnswers = sentBuffer.length;
+  if (alarmPendingAnswers > 0) {
+    alarmAnswerTimer = setTimeout(function() {
+      alarmAnswerTimer = null;
+      var n = Math.min(alarmPendingAnswers, sentBuffer.length);
+      alarmPendingAnswers = 0;
+      if (n > 0) {
+        sentBuffer.splice(0, n);
+        io.sockets.emit('data', {
+          'command': '',
+          'response': n + ' jawaban dibatalkan (timeout setelah ALARM)',
+          'type': 'error'
+        });
+      }
+    }, ALARM_ANSWER_TIMEOUT_MS);
+  }
+}
+
+// Every ok/error answers the oldest sentBuffer entry - one of the pre-alarm
+// ones while any are pending.
+function noteAnswerAfterAlarm() {
+  if (alarmPendingAnswers > 0) {
+    alarmPendingAnswers--;
+    if (alarmPendingAnswers === 0) {
+      clearTimeout(alarmAnswerTimer);
+      alarmAnswerTimer = null;
+    }
+  }
 }
 
 function rejectCommand(line, reason) {
@@ -2968,6 +3038,7 @@ function stopPort() {
   status.comms.connectionStatus = 0;
   controllerReady = false;
   unlockAfterBanner = false; // a Clear Alarm still waiting for its banner is void now
+  alarmActive = false; // re-learnt from the next controller's status
   status.machine.firmware.type = "";
   status.machine.firmware.version = ""; // get version
   status.machine.firmware.date = "";
@@ -3312,6 +3383,7 @@ function parseFeedback(data) {
   //debug_log(data)
   var state = data.substring(1, data.search(/(,|\|)/));
   status.comms.runStatus = state
+  alarmActive = state.indexOf('Alarm') === 0; // the controller's own word on it
   // P9: this is where a job is known to have REALLY finished - controller
   // Idle with no line left unacknowledged - so this (not "last line sent") is
   // when the recovery record is cleared.

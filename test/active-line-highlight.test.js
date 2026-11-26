@@ -36,7 +36,7 @@ function harness() {
   const counts = []; // [the queue entry just sent (machineSend emits BEFORE it writes), queueCount data]
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uc-hl-'));
   const ctx = {
-    gcodeQueue: [], queuePointer: 0, sentBuffer: [], queueCounter: null, controllerReady: true,
+    gcodeQueue: [], queuePointer: 0, sentBuffer: [], queueCounter: null, controllerReady: true, alarmActive: false, alarmPendingAnswers: 0, alarmAnswerTimer: null, ALARM_ANSWER_TIMEOUT_MS: 3000, unlockAfterBanner: false, clearTimeout() {},
     status: {
       comms: { connectionStatus: 2, blocked: false, paused: false, runStatus: 'Idle', queue: 0, alarm: '', interfaces: { type: 'usb' } },
       machine: { modals: {}, firmware: { type: 'grbl', platform: 'grbl', rxBufferSize: 254, blockBufferSize: '35', version: '', date: '', buffer: '' }, tool: { nexttool: {} } },
