@@ -1580,18 +1580,14 @@ io.on("connection", function(socket) {
           // Grbl $I parser
           if (data.indexOf("[VER:") === 0) {
             controllerReady = true; // the handshake reply - see controllerReady
-            // Extracting the full version (1.1f)
-            const version = data.split(':')[1].split('.')[0] + '.' + data.split(':')[1].split('.')[1];
-            // Extracting the date (20240402)
-            const date = data.split(':')[1].split('.')[2];
-
-            status.machine.firmware.version = version;
-            status.machine.firmware.date = date;
+            var ver = parseVersionLine(data);
+            status.machine.firmware.version = ver.version;
+            status.machine.firmware.date = ver.date;
 
             io.sockets.emit("status", status);
 
-            status.machine.name = data.split(':')[2].split(']')[0].toLowerCase()
-            io.sockets.emit("machinename", data.split(':')[2].split(']')[0].toLowerCase());
+            status.machine.name = ver.name
+            io.sockets.emit("machinename", ver.name);
           }
 
           if (data.indexOf("[OPT:") === 0) {
@@ -3025,6 +3021,23 @@ function queueOperatorLine(line) {
 // "[MSG:A is Y2 ($309=1): A10.000]" come before their own command's ok/error
 // and keep its label - they are not in this list.
 var SPONTANEOUS_MESSAGES = ["[MSG:Reset to continue]", "[MSG:'$H'|'$X' to unlock]", "[MSG:Check Limits]", "[MSG:Check Door]", "[MSG:Pgm End]", "[MSG:Restoring spindle]", "[MSG:E-stop", "[MSG:RST:", "[MSG:FAULT:", "[MSG:PWRLOSS", "[MSG:Power-on", "[MSG:Settings lost", "[MSG:TLO cleared by reset", "[MSG:Tool change", "[MSG:Tool "];
+
+// "[VER:1.1f.20261126.53AS.4A-AS:Grbl Mythos ]" -> version "1.1f", date
+// "20261126", name "grbl mythos". The version may carry any variant suffix
+// after the date; the name part (after the first ':') may be empty, contain
+// ':' itself, or be missing altogether - the old split(':')[2] threw a
+// TypeError inside the serial handler for a [VER:...] line without it.
+function parseVersionLine(line) {
+  var end = line.lastIndexOf(']');
+  var body = line.slice(5, end === -1 ? line.length : end);
+  var colon = body.indexOf(':');
+  var parts = (colon === -1 ? body : body.slice(0, colon)).split('.');
+  return {
+    version: parts[0] + '.' + (parts[1] || ''),
+    date: parts[2] || '',
+    name: colon === -1 ? '' : body.slice(colon + 1).trim().toLowerCase()
+  };
+}
 
 function isSpontaneousMessage(line) {
   if (line.indexOf('Grbl') === 0 || line.indexOf('ALARM') === 0) return true; // banner, alarm
