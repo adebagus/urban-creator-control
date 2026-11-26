@@ -586,6 +586,10 @@ var iosocket;
 var lastCommand = false
 var gcodeQueue = [];
 var queuePointer = 0;
+// "?" typed in the console is sent as a realtime byte (never queued), so the
+// status report it asks for is printed by this flag instead of by "?" being
+// the head of sentBuffer.
+var echoNextStatusReport = false;
 var statusLoop;
 var frontEndUpdateLoop, sysinfoUpdateLoop
 
@@ -1793,9 +1797,10 @@ io.on("connection", function(socket) {
             // debug_log(' Got statusReport (Grbl & Smoothieware)')
             // statusfeedback func
             parseFeedback(data)
-            if (command == "?") {
+            if (command == "?" || echoNextStatusReport) {
+              echoNextStatusReport = false;
               var output = {
-                'command': command,
+                'command': '?',
                 'response': data,
                 'type': 'info'
               }
@@ -2120,16 +2125,32 @@ io.on("connection", function(socket) {
     if (status.comms.connectionStatus > 0) {
       if (data) {
         data = data.split('\n');
+        var queuedAny = false;
         for (var i = 0; i < data.length; i++) {
           var line = data[i].split(';'); // Remove everything after ; = comment
           var tosend = line[0].trim();
           if (tosend.length > 0) {
-            addQToEnd(tosend);
+            if (isRealtimeCommand(tosend)) {
+              if (tosend === String.fromCharCode(0x18)) {
+                resetController('stopped', 'restart'); // Restart / Restart Grbl buttons send this
+              } else {
+                if (tosend === '?') {
+                  echoNextStatusReport = true; // it used to print because "?" sat in sentBuffer
+                }
+                addQRealtime(tosend);
+              }
+            } else {
+              addQToEnd(tosend);
+              queuedAny = true;
+            }
           }
         }
-        status.comms.runStatus = 'Running'
-        // debug_log('sending ' + JSON.stringify(gcodeQueue))
-        send1Q();
+        // Only lines can make send1Q() do anything - and a realtime byte typed
+        // mid-job (e.g. "!") must not push one more job line into flight.
+        if (queuedAny) {
+          status.comms.runStatus = 'Running'
+          send1Q();
+        }
       }
     } else {
       debug_log('ERROR: Machine connection not open!');
@@ -2571,8 +2592,7 @@ io.on("connection", function(socket) {
       debug_log('Reset Machine');
       switch (status.machine.firmware.type) {
         case 'grbl':
-          addQRealtime(String.fromCharCode(0x18)); // ctrl-x
-          debug_log('Sent: Code(0x18)');
+          resetController('stopped', 'restart');
           break;
       }
     } else {
@@ -2763,11 +2783,62 @@ function announceJobStopped(reason) {
   if (jobStartTime && gcodeQueue.length > 0) {
     io.sockets.emit('jobStopped', {
       completed: false,
-      reason: reason, // 'stopped' | 'interrupted' | 'alarm-reset'
+      reason: reason, // 'stopped' | 'interrupted' | 'alarm-reset' | 'restart' | ...
       jobStartTime: jobStartTime,
       jobEndTime: new Date().getTime()
     });
   }
+}
+
+// The ONE place that forgets everything the sender believes is queued or in
+// flight on the controller. Every "ok"/"error" is paired with the oldest
+// entry of sentBuffer, so once the controller stops owing us answers for those
+// lines (it was reset and wiped its RX buffer, or the port went away), any
+// entry left behind shifts the pairing of every later answer by one - the
+// bench finding where an old line's error was shown against the next command.
+// Callers snapshot the recovery record (jobRecovery.finish) BEFORE calling
+// this: it reads the live queue.
+function resetSenderState(reason) {
+  announceJobStopped(reason); // also reads the live queue - before the dump
+  clearInterval(queueCounter);
+  if (jogWindow) {
+    jogWindow.setProgressBar(0);
+  }
+  gcodeQueue.length = 0;
+  queuePointer = 0;
+  sentBuffer.length = 0;
+  jobStartTime = false;
+  jobCompletedMsg = "";
+  status.comms.queue = 0;
+  status.comms.blocked = false;
+  status.comms.paused = false;
+  // "Job Queue: N" in the UI only changes when a line is sent - without this
+  // it kept showing the dead queue's count.
+  io.sockets.emit('queueCount', [0, 0]);
+}
+
+// Soft-reset the controller (ctrl-x). It is a realtime byte: it must go out
+// NOW, never wait behind queued lines - the ribbon's Restart button used to
+// queue it as a normal line, so during a job it was only sent after the whole
+// job, and its own sentBuffer entry never got an "ok". The reset discards
+// whatever the controller had not yet answered, so the sender forgets it too.
+function resetController(recoveryState, reason) {
+  jobRecovery.finish(recoveryState);
+  resetSenderState(reason);
+  if (status.comms.connectionStatus == 3 || status.comms.connectionStatus == 4) {
+    status.comms.connectionStatus = 2;
+  }
+  addQRealtime(String.fromCharCode(0x18)); // ctrl-x
+  debug_log('Sent: Code(0x18)');
+}
+
+// A console/UI line that is really a realtime command (?, !, ~, ctrl-x, and
+// the 0x80-0xFF override/jog-cancel bytes). These act the moment the
+// controller receives them and never produce an "ok", so they must not enter
+// gcodeQueue/sentBuffer.
+function isRealtimeCommand(line) {
+  if (line.length !== 1) return false;
+  return line === '?' || line === '!' || line === '~' || line === String.fromCharCode(0x18) || line.charCodeAt(0) >= 0x80;
 }
 
 function stopPort() {
@@ -4084,9 +4155,6 @@ function stop(data) {
     if (!jogOnly) {
       jobRecovery.finish('stopped');
     }
-    // Before the resets further down clear jobStartTime and the queue. Applies
-    // to a jog-cancel too: it dumps the whole queue, so a running job is dead.
-    announceJobStopped('stopped');
     status.comms.paused = true;
     debug_log('STOP');
     switch (status.machine.firmware.type) {
@@ -4118,24 +4186,13 @@ function stop(data) {
         status.comms.connectionStatus = 2;
         break;
     }
-    clearInterval(queueCounter);
-    if (jogWindow) {
-      jogWindow.setProgressBar(0);
-    }
-    status.comms.queue = 0
-    queuePointer = 0;
-    gcodeQueue.length = 0; // Dump the queue
-    sentBuffer.length = 0; // Dump the queue
-    // sentBuffer.length = 0; // Dump bufferSizes
-    // The job is dead along with its queue: drop its start time and completion
-    // message too. Left set, the next command's "ok" reached send1Q's empty-
-    // queue branch and emitted a jobComplete carrying the OLD jobStartTime
-    // (bogus "JOB COMPLETE" log + junk job-history entry after every Stop).
-    jobStartTime = false;
-    jobCompletedMsg = "";
+    // Applies to a jog-cancel too: it dumps the whole queue, so a running job
+    // is dead (resetSenderState announces it before the dump). The job's start
+    // time and completion message go with it - left set, the next command's
+    // "ok" reached send1Q's empty-queue branch and emitted a jobComplete
+    // carrying the OLD jobStartTime.
+    resetSenderState('stopped');
     laserTestOn = false;
-    status.comms.blocked = false;
-    status.comms.paused = false;
     status.comms.runStatus = 'Stopped';
     status.comms.alarm = "";
   } else {

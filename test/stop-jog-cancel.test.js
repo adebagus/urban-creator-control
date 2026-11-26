@@ -54,7 +54,7 @@ function harness() {
     getPlannerBlocks: () => 35,
   });
   vm.createContext(ctx);
-  vm.runInContext(MODAL_VARS + ['addQToEnd', 'addQRealtime', 'send1Q', 'BufferSpace', 'machineSend', 'runJob', 'announceJobStopped', 'stop'].map(grabFunction).join('\n'), ctx);
+  vm.runInContext(MODAL_VARS + ['addQToEnd', 'addQRealtime', 'send1Q', 'BufferSpace', 'machineSend', 'runJob', 'announceJobStopped', 'resetSenderState', 'stop'].map(grabFunction).join('\n'), ctx);
   const h = {
     ctx, written, emitted,
     // "ok" for the oldest line in flight
@@ -208,7 +208,7 @@ test('with no connection nothing is sent at all', () => {
 test('structure: "running" is judged BEFORE the queue is dumped, and the jog-only checks use it (not data.jog alone)', () => {
   const src = grabFunction('stop');
   const decide = src.indexOf('var jobRunning');
-  assert.ok(decide !== -1 && decide < src.indexOf('gcodeQueue.length = 0'), 'decided before the dump');
+  assert.ok(decide !== -1 && decide < src.indexOf('resetSenderState('), 'decided before the dump (resetSenderState)');
   assert.ok(decide < src.indexOf('jobRecovery.finish'), 'and before the recovery snapshot');
   assert.match(src, /var jogOnly = !!\(data && data\.jog\) && !jobRunning;/);
   assert.match(src, /if \(jogOnly\) \{\s*addQRealtime\(String\.fromCharCode\(0x85\)\)/);

@@ -456,7 +456,8 @@ function initSocket() {
     var left = data[0]
     var total = data[1]
     var done = total - left;
-    var donepercent = done / total * 100
+    // [0, 0] = the server just emptied its queue (reset/stop/abort): no job.
+    var donepercent = total > 0 ? done / total * 100 : 0
     var progressbar = $("#progressbar").data("progress");
     if (progressbar) {
       progressbar.val(donepercent);
@@ -468,7 +469,7 @@ function initSocket() {
     // the browser profile.
 
     if (laststatus) {
-      if (laststatus.comms.connectionStatus == 3) {
+      if (laststatus.comms.connectionStatus == 3 && total > 0) {
         // data[2] = the original-file line the server just sent (tracked jobs). Without it
         // (probing, console commands) the queue index is the best available guess.
         var activeLine = (Number.isInteger(data[2]) && data[2] >= 1) ? data[2] : data[1] - data[0];
