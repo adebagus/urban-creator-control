@@ -4238,6 +4238,11 @@ function showJogWindow() {
   if (jogWindow === null) {
     createJogWindow();
   }
+  // A second launch (single instance) lands here: a minimized window must
+  // come back too - show() alone leaves it on the taskbar.
+  if (jogWindow.isMinimized()) {
+    jogWindow.restore();
+  }
   jogWindow.show()
   jogWindow.setAlwaysOnTop(true);
   jogWindow.focus();
