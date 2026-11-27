@@ -362,7 +362,11 @@ const electronApp = electron.app;
 // regardless of app "name"/productName changes made in later stages.
 electronApp.setPath('userData', path.join(electronApp.getPath('appData'), 'UrbanCreatorCONTROL-dev'))
 
-electronApp.setAppUserModelId("id.urbancreator.control.dev")
+// Windows' ID for this app (taskbar grouping, notifications) - and the name
+// of the login item that versions up to 2.0.0 registered, see
+// removeLegacyLoginItem().
+const APP_USER_MODEL_ID = "id.urbancreator.control.dev"
+electronApp.setAppUserModelId(APP_USER_MODEL_ID)
 
 const {
   dialog
@@ -4223,6 +4227,21 @@ function addQRealtime(gcode) {
   machineSend(gcode, true);
 }
 
+// Up to 2.0.0 every run called setLoginItemSettings with openAtLogin on, writing
+// HKCU\...\CurrentVersion\Run "<APP_USER_MODEL_ID>". With openAtLogin false
+// Electron deletes that value (and its StartupApproved twin) by name. Never
+// allowed to stop the app from starting.
+function removeLegacyLoginItem() {
+  try {
+    electronApp.setLoginItemSettings({
+      openAtLogin: false,
+      name: APP_USER_MODEL_ID
+    });
+  } catch (e) {
+    serialLog('error', 'Could not remove the old login item (' + e.message + ')');
+  }
+}
+
 function showJogWindow() {
   if (jogWindow === null) {
     createJogWindow();
@@ -4550,12 +4569,11 @@ if (isElectron()) {
       }
     });
 
-    // Autostart on Login
+    // No auto-start at login (2.0.1). Older versions registered one on every
+    // run; take it out again, so an update (or just running this version)
+    // leaves nothing behind. The installer does the same - build/installer.nsh.
     if (process.platform == 'win32') {
-      electronApp.setLoginItemSettings({
-        openAtLogin: true,
-        args: []
-      })
+      removeLegacyLoginItem();
     }
 
     // Catch termination signals too (Ctrl+C in a dev console, `npm run-local`,

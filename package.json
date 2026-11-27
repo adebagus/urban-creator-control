@@ -78,7 +78,8 @@
       "license": "build/licence.txt",
       "installerIcon": "build/icon.ico",
       "installerSidebar": "build/installerSidebar.bmp",
-      "artifactName": "${productName}-Setup-${version}.${ext}"
+      "artifactName": "${productName}-Setup-${version}.${ext}",
+      "include": "build/installer.nsh"
     },
     "fileAssociations": [
       {

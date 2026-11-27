@@ -27,7 +27,8 @@ test('P0: package.json identity is isolated from the real OpenBuilds CONTROL', (
 test('P0: index.js sets a DEV-specific userData path and AUMID before anything else runs', () => {
   const src = read('index.js');
   assert.match(src, /setPath\('userData',\s*path\.join\(electronApp\.getPath\('appData'\),\s*'UrbanCreatorCONTROL-dev'\)\)/);
-  assert.match(src, /setAppUserModelId\("id\.urbancreator\.control\.dev"\)/);
+  assert.match(src, /const APP_USER_MODEL_ID = "id\.urbancreator\.control\.dev"/);
+  assert.match(src, /setAppUserModelId\(APP_USER_MODEL_ID\)/);
 });
 
 // ---------------------------------------------------------------------------
