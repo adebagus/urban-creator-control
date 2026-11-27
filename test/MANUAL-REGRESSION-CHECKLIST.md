@@ -379,8 +379,21 @@ Setelah TIAP langkah, perhatikan dua hal di log: (1) setiap jawaban berlabel per
       status Not Connected, `Controller: Disconnected` (bukan `Hold:0`), Job Queue 0, baris job yang
       dibatalkan disebut di log. Perintah konsol sesudahnya: `Ditolak ... port terputus`. Connect lagi ke
       COM yang sama berhasil; job TIDAK berlanjut sendiri; notifikasi unfinished job muncul.
-- [ ] **Tidak ada pemutusan palsu**: biarkan terhubung idle 5 menit, jalankan `$H` dan satu job pendek,
-      tahan E-stop beberapa detik — koneksi TIDAK putus sendiri.
+- [ ] **Tidak ada pemutusan palsu** *(syarat push, bench 27 Nov)* — koneksi TIDAK boleh putus sendiri di:
+  - [ ] **Homing**: `$H` dari konsol DAN dari tombol Home, dengan `$22=1`. Selama siklus Mythos memang
+        tidak menjawab `?` (limits.c), jadi posisi/status boleh membeku sampai homing selesai. **Harapan**:
+        tidak ada `Koneksi ke controller terputus`, `ok` berlabel `[$H]`, status kembali Idle. Batas aman:
+        homing yang tidak selesai dalam max(120 dtk, 1,5×$130..$132/$25 + locate) baru dianggap putus,
+        dengan log `homing tidak selesai dalam N detik`.
+  - [ ] **Cabut USB TEPAT setelah homing selesai**: putus terdeteksi dalam ±3 detik seperti biasa.
+  - [ ] **E-stop ditahan 10 detik** (idle, lalu sekali lagi saat job berjalan): status tetap ter-update,
+        koneksi tetap; lepas E-stop → alur unlock seperti biasa.
+  - [ ] **Idle 5 menit** terhubung tanpa menyentuh apa pun.
+- [ ] **Konsol saat job berjalan/pause**: input abu-abu, placeholder
+      `Konsol nonaktif selama job berjalan — tunggu selesai atau Stop dulu` /
+      `... di-pause — Resume atau Stop dulu`, tombol Send nonaktif. Setelah job selesai/Stop: normal lagi.
+- [ ] **Label Homing ON/OFF**: ketik `$22=1` di konsol → `Homing: ON` langsung (dan `$$` dikirim sekali
+      untuk konfirmasi); `$22=0` → `Homing: OFF`. Sama untuk `$21` / Hard Limit.
 - [ ] **Esc**: tekan Esc saat idle → banner reset muncul dengan baris log `Reset (Esc)` sebelumnya.
 - [ ] **Tutup banner "Pekerjaan belum selesai ditemukan"**: klik di mana saja dalam kotak (x) di pojok
       kanan atas → banner tertutup pada klik pertama.
