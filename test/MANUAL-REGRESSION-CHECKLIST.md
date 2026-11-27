@@ -18,11 +18,11 @@ board Anda semua STM32, bukan ESP32.
 
 - [ ] **Instalasi berdampingan**: install Urban Creator CONTROL di mesin yang
       juga sudah ada OpenBuilds CONTROL asli. Jalankan KEDUANYA bersamaan.
-      **Harapan**: dua proses terpisah di Task Manager, dua tray icon terpisah,
-      tidak ada crash/rebutan resource.
+      **Harapan**: dua proses terpisah di Task Manager, tidak ada crash/rebutan resource.
+      (Sejak 2.0.1 Urban Creator CONTROL tidak punya tray icon.)
       **Cepat cek**: `%APPDATA%\UrbanCreatorCONTROL-dev\` harus ada terpisah dari
       folder OpenBuilds CONTROL asli.
-- [ ] **Tray/window identity**: judul window, tray tooltip harus menunjukkan
+- [ ] **Window identity**: judul window harus menunjukkan
       "Urban Creator CONTROL" (tanpa suffix "(DEV)" - branding final sejak P8),
       bukan "OpenBuilds CONTROL". AUMID (klik kanan taskbar icon → properties)
       tetap `id.urbancreator.control.dev` - itu ID internal Windows, sengaja
@@ -55,8 +55,16 @@ board Anda semua STM32, bukan ESP32.
       ada board ESP32; board Anda STM32, boleh skip)*: mulai flash BLOX/Interface,
       force-close app di tengah proses. **Harapan**: proses `esptool.exe` ikut mati
       (cek Task Manager), tidak ada child process nyangkut.
-- [ ] **Tray icon & identitas saat menu terbuka**: klik kanan tray icon, screenshot
-      menu — pastikan semua teks bilang "Urban Creator CONTROL" (tanpa "(DEV)").
+- [ ] **Perilaku aplikasi (2.0.1)** — pasang installer di atas versi lama:
+  - [ ] **Tanpa auto-start**: Task Manager > Startup apps tidak memuat Urban Creator CONTROL; registry
+        `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` tidak punya `id.urbancreator.control.dev`
+        (entri `openbuilds.control` milik OpenBuilds CONTROL asli boleh tetap ada).
+  - [ ] **Tanpa tray**: tidak ada ikon di system tray; tombol (x) title bar bertuliskan "Tutup aplikasi".
+  - [ ] **Tutup = keluar total**: tutup jendela (x / Alt+F4 / taskbar Close) → tidak ada proses
+        `Urban Creator CONTROL.exe` tersisa, port 4000 lepas, COM bisa dibuka app lain. Job berjalan →
+        muncul konfirmasi; "Batal" → jendela tetap terbuka dan job jalan terus.
+  - [ ] **Satu jendela**: buka ikon dua kali → tetap satu jendela; saat di-minimize, membuka ikon lagi
+        memunculkan jendela yang sama.
 
 ## P3 — Localhost Backend
 

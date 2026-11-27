@@ -1,6 +1,7 @@
-# UC CONTROL — Patch Stabilitas
+# UC CONTROL 2.0.1 — Patch Stabilitas
 
-Rilis ini fokus pada keandalan saat mengirim job ke mesin. Tidak ada fitur baru dan alur kerja tetap sama.
+Rilis ini fokus pada keandalan saat mengirim job ke mesin. Tidak ada fitur baru; perubahan cara aplikasi
+dibuka dan ditutup ada di bagian "Perilaku aplikasi".
 Sudah diuji di board UC-100 (GRBL Mythos 4A-AS).
 
 ## Job berhenti dengan benar
@@ -31,6 +32,15 @@ Sudah diuji di board UC-100 (GRBL Mythos 4A-AS).
   Tombol Send ikut nonaktif.
 - Tombol Esc (Abort) menulis `Reset (Esc)` di log.
 - Label **Homing** dan **Hard Limit** langsung ikut berubah saat `$22` / `$21` diubah dari konsol.
+
+## Perilaku aplikasi
+
+- UC CONTROL **tidak lagi berjalan otomatis** saat Windows login. Entri auto-start dari versi lama dihapus
+  saat update.
+- **Tidak ada mode tray/latar belakang.** Menutup jendela berarti aplikasi keluar total dan koneksi ke mesin
+  ditutup. Bila job sedang berjalan, aplikasi bertanya dulu.
+- Membuka ikon UC CONTROL saat aplikasi sudah terbuka akan memunculkan jendela yang ada, bukan membuka
+  jendela kedua.
 
 ## Perbaikan kecil
 
