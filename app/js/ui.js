@@ -401,7 +401,8 @@ function setConsole(val, status) {
     if (!$('#command').attr('disabled')) {
       $('#command').attr('disabled', true);
     }
-    $("#sendCommand").prop('disabled', false);
+    // the backend refuses console commands while paused - Send must not look usable
+    $("#sendCommand").prop('disabled', true);
   } else if (val == 5) { // Alarm State
     $("#command").attr('disabled', false);
     $("#sendCommand").prop('disabled', false);
@@ -411,4 +412,26 @@ function setConsole(val, status) {
     }
     $("#sendCommand").prop('disabled', true);
   }
+  setConsoleJobLock(val);
+}
+
+// During a job the console input is disabled (above) - make that plain: greyed
+// out, and the placeholder says why and what to do. Restored afterwards.
+var CONSOLE_JOB_LOCK_TEXT = {
+  3: 'Konsol nonaktif selama job berjalan — tunggu selesai atau Stop dulu',
+  4: 'Konsol nonaktif selama job di-pause — Resume atau Stop dulu',
+};
+function setConsoleJobLock(val) {
+  var input = $('#command');
+  if (!input.length) return;
+  if (input.data('placeholderIdle') === undefined) {
+    input.data('placeholderIdle', input.attr('placeholder') || '');
+  }
+  var text = CONSOLE_JOB_LOCK_TEXT[val];
+  var placeholder = text || input.data('placeholderIdle');
+  if (input.attr('placeholder') !== placeholder) {
+    input.attr('placeholder', placeholder);
+  }
+  input.toggleClass('console-job-locked', !!text);
+  input.closest('.input').toggleClass('console-job-locked', !!text);
 }

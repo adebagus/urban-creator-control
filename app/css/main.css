@@ -686,3 +686,23 @@ select {
   position: relative;
   z-index: 1900;
 }
+
+/* Console input while a job runs or is paused: it is disabled (ui.js
+   setConsole), and must look it - greyed out, with the placeholder saying
+   why (setConsoleJobLock). */
+.input.console-job-locked,
+#command.console-job-locked {
+  background-color: #3a3a3a !important;
+  cursor: not-allowed;
+}
+.input.console-job-locked {
+  opacity: 0.75;
+}
+#command.console-job-locked {
+  color: #9a9a9a !important;
+}
+#command.console-job-locked::placeholder {
+  color: #d0d0d0;
+  opacity: 1;
+  font-style: italic;
+}
