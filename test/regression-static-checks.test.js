@@ -24,9 +24,13 @@ test('P0: package.json identity is isolated from the real OpenBuilds CONTROL', (
   assert.notEqual(pkg.build.productName, 'OpenBuildsCONTROL');
 });
 
-test('P0: index.js sets a DEV-specific userData path and AUMID before anything else runs', () => {
+test('P0: index.js sets the userData path (dev run: -dev, installed: production) and AUMID before anything else runs', () => {
   const src = read('index.js');
-  assert.match(src, /setPath\('userData',\s*path\.join\(electronApp\.getPath\('appData'\),\s*'UrbanCreatorCONTROL-dev'\)\)/);
+  // 2.0.1: the folder is chosen by userDataLocation.js (test/user-data-location.test.js)
+  assert.match(src, /electronApp\.setPath\('userData', userDataLocation\.dir\)/);
+  const loc = read('userDataLocation.js');
+  assert.match(loc, /const DEV_DIR_NAME = 'UrbanCreatorCONTROL-dev'/);
+  assert.match(loc, /const RELEASE_DIR_NAME = 'UrbanCreatorCONTROL'/);
   assert.match(src, /const APP_USER_MODEL_ID = "id\.urbancreator\.control\.dev"/);
   assert.match(src, /setAppUserModelId\(APP_USER_MODEL_ID\)/);
 });

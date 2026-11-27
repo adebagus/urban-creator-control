@@ -65,6 +65,11 @@ board Anda semua STM32, bukan ESP32.
         muncul konfirmasi; "Batal" → jendela tetap terbuka dan job jalan terus.
   - [ ] **Satu jendela**: buka ikon dua kali → tetap satu jendela; saat di-minimize, membuka ikon lagi
         memunculkan jendela yang sama.
+  - [ ] **Folder data**: rilis memakai `%APPDATA%\UrbanCreatorCONTROL`, dev (`electron .`) memakai
+        `UrbanCreatorCONTROL-dev`. Update dari 2.0.0: macro, backup setting Grbl, job-recovery tetap ada;
+        `serial.log` rilis berisi `User data migration: SUCCESS ...` dan
+        `User data migration (copied): N macros, M Grbl settings backups ...`; folder `-dev` tidak berubah.
+  - [ ] **Dev dan rilis bersamaan**: keduanya bisa terbuka (dua jendela), tidak saling menyerahkan diri.
 
 ## P3 — Localhost Backend
 

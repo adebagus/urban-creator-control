@@ -358,9 +358,17 @@ var lastsentuploadprogress = 0;
 const electron = require('electron');
 const electronApp = electron.app;
 
-// Urban Creator CONTROL (DEV): keep userData isolated from OpenBuilds CONTROL
-// regardless of app "name"/productName changes made in later stages.
-electronApp.setPath('userData', path.join(electronApp.getPath('appData'), 'UrbanCreatorCONTROL-dev'))
+// Where the user data lives: a dev run keeps UrbanCreatorCONTROL-dev, an
+// installed build uses UrbanCreatorCONTROL - copied once from the -dev folder
+// that 2.0.0 used. Decided before anything touches userData; the
+// single-instance lock follows the folder, so a dev run and an installed app
+// can be open side by side. See userDataLocation.js.
+const userDataLocationModule = require('./userDataLocation');
+const userDataLocation = userDataLocationModule.resolveUserData({
+  appData: electronApp.getPath('appData'),
+  isPackaged: electronApp.isPackaged
+});
+electronApp.setPath('userData', userDataLocation.dir)
 
 // Windows' ID for this app (taskbar grouping, notifications) - and the name
 // of the login item that versions up to 2.0.0 registered, see
@@ -405,6 +413,13 @@ function serialLog(level, message) {
   }
 }
 // --- end serial port lifecycle diagnostics ----------------------------------
+
+// The user-data decision above, in the release's own (new) serial.log.
+var userDataMigrationLine = userDataLocationModule.migrationLogLine(userDataLocation.migration);
+if (userDataMigrationLine) {
+  serialLog(userDataLocation.migration.status === 'fallback' ? 'error' : 'info', userDataMigrationLine);
+}
+var userDataCountsLogged = false;
 
 if (isElectron()) {
   debug_log("Local User Data: " + electronApp.getPath('userData'))
@@ -4444,6 +4459,20 @@ if (isElectron()) {
       var ipaddr = ip.address();
       // jogWindow.loadURL(`//` + ipaddr + `:3000/`)
       jogWindow.loadURL(`http://localhost:${config.webPort}/`);
+
+      // After a user-data copy (or a fallback): how many macros and Grbl
+      // settings backups the localStorage in use holds - once, into serial.log.
+      var migration = userDataLocation.migration;
+      if (migration && migration.status !== 'fresh' && !userDataCountsLogged) {
+        userDataCountsLogged = true;
+        jogWindow.webContents.once('did-finish-load', function() {
+          jogWindow.webContents.executeJavaScript(userDataLocationModule.COUNT_SCRIPT).then(function(counts) {
+            serialLog('info', userDataLocationModule.countsLogLine(migration, counts));
+          }).catch(function(e) {
+            serialLog('error', 'User data migration: could not count macros/backups (' + e.message + ')');
+          });
+        });
+      }
       //jogWindow.webContents.openDevTools()
 
       // P8: used to hide to tray - now quits for real (Alt+F4, taskbar

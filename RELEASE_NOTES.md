@@ -41,6 +41,9 @@ Sudah diuji di board UC-100 (GRBL Mythos 4A-AS).
   ditutup. Bila job sedang berjalan, aplikasi bertanya dulu.
 - Membuka ikon UC CONTROL saat aplikasi sudah terbuka akan memunculkan jendela yang ada, bukan membuka
   jendela kedua.
+- Data aplikasi kini disimpan di folder `%APPDATA%\UrbanCreatorCONTROL`. Macro, backup setting, shortcut,
+  dan data job yang belum selesai dari versi lama **disalin otomatis** saat 2.0.1 pertama kali dibuka.
+  Folder lama tidak diubah.
 
 ## Perbaikan kecil
 
