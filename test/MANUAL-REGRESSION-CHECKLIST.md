@@ -347,57 +347,63 @@ yang dicek di sini adalah board dan USB sungguhan. Acuan format jawaban: `D:\GRB
 Setelah TIAP langkah, perhatikan dua hal di log: (1) setiap jawaban berlabel perintahnya sendiri,
 (2) banner `Grbl 1.1f [GRBL Mythos ...]`, `ALARM:`, dan `[MSG:...]` spontan tampil **tanpa label** `[...]`.
 
-- [ ] **Skenario bench utama** (satu per satu dari konsol, tunggu jawaban tiap baris):
+> **Hasil bench: LULUS semua (27 Nov 2026, Mythos 4A-AS, COM8).**
+> Pagi: skenario A0, error di tengah job, USB dicabut lama, dwell, M6, probe, tulis setting.
+> Sore: `$H` tanpa switch ~25 dtk → `ALARM:9`, tidak putus; E-stop ditahan >25 dtk, tidak putus;
+> idle 6 menit, tidak putus; konsol saat job berjalan/pause (placeholder sesuai, Send nonaktif);
+> label Homing ikut `$22`; Restart saat job → `38 baris ... dibatalkan karena Restart`, `$X` bersih.
+
+- [x] **Skenario bench utama** (satu per satu dari konsol, tunggu jawaban tiap baris):
       `$309=1` → `$21=1` → gerak Y pelan (`G21 G91 G1 Y60 F60`) → picu switch limit → `ALARM:1` →
       tombol **Restart Grbl** (BUKAN Clear Alarm) → `$X` → `$309=0` → Restart → `G91 G1 A10` →
       `$309=1` → Restart → `G90 G0 A0`.
       **Harapan**: `G90 G0 A0` dijawab `ok` dengan label `[G90 G0 A0]`, **Job Queue: 0**, tidak ada
       `error:33` di mana pun (A10 di mode 0 sah). Banner tidak pernah berlabel `[$309=1]`.
-- [ ] **Restart di tengah job**: jalankan job panjang, tekan Restart Grbl. **Harapan**: mesin reset SEKETIKA
+- [x] **Restart di tengah job**: jalankan job panjang, tekan Restart Grbl. **Harapan**: mesin reset SEKETIKA
       (bukan setelah job selesai), job tercatat berhenti, Job Queue 0, perintah konsol berikutnya dijawab
       dengan labelnya sendiri.
-- [ ] **Error di tengah job**: buat job yang sengaja ditolak di tengah (mis. baris `G91 G1 A10` dengan
+- [x] **Error di tengah job**: buat job yang sengaja ditolak di tengah (mis. baris `G91 G1 A10` dengan
       `$309=1`). **Harapan**: log menulis `N baris belum terkirim dibatalkan karena error (...)`; ketik `$X`
       atau `$G` sesudahnya → **mesin TIDAK bergerak melanjutkan sisa job lama** (dulu sisa job jalan lagi).
-- [ ] **Perintah saat ALARM**: setelah ALARM, ketik `G0 X10` → ditolak dengan pesan
+- [x] **Perintah saat ALARM**: setelah ALARM, ketik `G0 X10` → ditolak dengan pesan
       `Mesin ALARM — kirim $X/$H dulu`, tidak terkirim. `$X`, `$H`, `$$` tetap terkirim. Tombol Stop/Feed
       Hold/`?` tetap berfungsi.
-- [ ] **Perintah sesaat setelah Restart**: klik Restart lalu SEGERA ketik `$G`. **Harapan**: ditolak dengan
+- [x] **Perintah sesaat setelah Restart**: klik Restart lalu SEGERA ketik `$G`. **Harapan**: ditolak dengan
       pesan `Controller belum siap ...` (tidak hilang diam-diam), atau terkirim normal kalau banner sudah tiba.
-- [ ] **Connect BluePill/Mythos tanpa reset (USB CDC)**: connect; perintah dari konsol baru diterima setelah
+- [x] **Connect BluePill/Mythos tanpa reset (USB CDC)**: connect; perintah dari konsol baru diterima setelah
       jawaban `$I` (`[VER:...]`) atau banner. Tidak ada perintah yang hilang tanpa pesan.
-- [ ] **Clear Alarm (ribbon)** saat ALARM: board reset, `$X` terkirim sesudah banner dengan label `[$X]`,
+- [x] **Clear Alarm (ribbon)** saat ALARM: board reset, `$X` terkirim sesudah banner dengan label `[$X]`,
       `[MSG:'$H'|'$X' to unlock]` tampil tanpa label.
-- [ ] **Pause lalu cabut USB, connect lagi**: perintah konsol langsung terkirim (dulu macet selamanya).
-- [ ] **Konsol saat job PAUSE (Hold)** *(bench ulang 27 Nov)*: jalankan job, Pause, ketik `$I`.
+- [x] **Pause lalu cabut USB, connect lagi**: perintah konsol langsung terkirim (dulu macet selamanya).
+- [x] **Konsol saat job PAUSE (Hold)** *(bench ulang 27 Nov)*: jalankan job, Pause, ketik `$I`.
       **Harapan**: tidak terkirim, dan log menulis
       `Ditolak, tidak dikirim: job sedang pause — Resume atau Stop dulu`. Tombol Resume/`~`, `?`, Stop
       tetap bekerja. Setelah Resume, perintah konsol diterima lagi.
-- [ ] **USB tersenggol sesaat** *(bench ulang 27 Nov; board tetap hidup, Windows re-enumerate COM)*:
+- [x] **USB tersenggol sesaat** *(bench ulang 27 Nov; board tetap hidup, Windows re-enumerate COM)*:
       saat job Pause/berjalan, cabut-colok USB cepat. **Harapan dalam ±3 detik**: log
       `Koneksi ke controller terputus (tidak ada balasan dari controller selama 3 detik) - port ditutup`,
       status Not Connected, `Controller: Disconnected` (bukan `Hold:0`), Job Queue 0, baris job yang
       dibatalkan disebut di log. Perintah konsol sesudahnya: `Ditolak ... port terputus`. Connect lagi ke
       COM yang sama berhasil; job TIDAK berlanjut sendiri; notifikasi unfinished job muncul.
-- [ ] **Tidak ada pemutusan palsu** *(syarat push, bench 27 Nov)* — koneksi TIDAK boleh putus sendiri di:
-  - [ ] **Homing**: `$H` dari konsol DAN dari tombol Home, dengan `$22=1`. Selama siklus Mythos memang
+- [x] **Tidak ada pemutusan palsu** *(syarat push, bench 27 Nov)* — koneksi TIDAK boleh putus sendiri di:
+  - [x] **Homing**: `$H` dari konsol DAN dari tombol Home, dengan `$22=1`. Selama siklus Mythos memang
         tidak menjawab `?` (limits.c), jadi posisi/status boleh membeku sampai homing selesai. **Harapan**:
         tidak ada `Koneksi ke controller terputus`, `ok` berlabel `[$H]`, status kembali Idle. Batas aman:
         homing yang tidak selesai dalam max(120 dtk, 1,5×$130..$132/$25 + locate) baru dianggap putus,
         dengan log `homing tidak selesai dalam N detik`.
-  - [ ] **Cabut USB TEPAT setelah homing selesai**: putus terdeteksi dalam ±3 detik seperti biasa.
-  - [ ] **E-stop ditahan 10 detik** (idle, lalu sekali lagi saat job berjalan): status tetap ter-update,
+  - [x] **Cabut USB TEPAT setelah homing selesai**: putus terdeteksi dalam ±3 detik seperti biasa.
+  - [x] **E-stop ditahan 10 detik** (idle, lalu sekali lagi saat job berjalan): status tetap ter-update,
         koneksi tetap; lepas E-stop → alur unlock seperti biasa.
-  - [ ] **Idle 5 menit** terhubung tanpa menyentuh apa pun.
-- [ ] **Konsol saat job berjalan/pause**: input abu-abu, placeholder
+  - [x] **Idle 5 menit** terhubung tanpa menyentuh apa pun.
+- [x] **Konsol saat job berjalan/pause**: input abu-abu, placeholder
       `Konsol nonaktif selama job berjalan — tunggu selesai atau Stop dulu` /
       `... di-pause — Resume atau Stop dulu`, tombol Send nonaktif. Setelah job selesai/Stop: normal lagi.
-- [ ] **Label Homing ON/OFF**: ketik `$22=1` di konsol → `Homing: ON` langsung (dan `$$` dikirim sekali
+- [x] **Label Homing ON/OFF**: ketik `$22=1` di konsol → `Homing: ON` langsung (dan `$$` dikirim sekali
       untuk konfirmasi); `$22=0` → `Homing: OFF`. Sama untuk `$21` / Hard Limit.
-- [ ] **Esc**: tekan Esc saat idle → banner reset muncul dengan baris log `Reset (Esc)` sebelumnya.
-- [ ] **Tutup banner "Pekerjaan belum selesai ditemukan"**: klik di mana saja dalam kotak (x) di pojok
+- [x] **Esc**: tekan Esc saat idle → banner reset muncul dengan baris log `Reset (Esc)` sebelumnya.
+- [x] **Tutup banner "Pekerjaan belum selesai ditemukan"**: klik di mana saja dalam kotak (x) di pojok
       kanan atas → banner tertutup pada klik pertama.
-- [ ] **Advanced Settings Mythos**: `$309`, `$319`, `$329` tampil dengan nama/keterangan (bukan `;unknown`
+- [x] **Advanced Settings Mythos**: `$309`, `$319`, `$329` tampil dengan nama/keterangan (bukan `;unknown`
       di log `$$`, bukan kunci merah di tabel). Di firmware non-Mythos tetap seperti sebelumnya.
 
 ---
