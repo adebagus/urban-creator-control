@@ -411,12 +411,10 @@ if (isElectron()) {
 }
 
 const BrowserWindow = electron.BrowserWindow;
-const Tray = electron.Tray;
 const nativeImage = require('electron').nativeImage
 const Menu = require('electron').Menu
 
-var appIcon = null,
-  jogWindow = null,
+var jogWindow = null,
   mainWindow = null
 var autoUpdater
 
@@ -3583,12 +3581,6 @@ function quitAndCleanup(exitCode) {
 
   serialLog('info', 'Quit requested - beginning shutdown cleanup');
 
-  if (appIcon) {
-    try {
-      appIcon.destroy();
-    } catch (e) {}
-  }
-
   killActiveChildProcesses();
 
   // Exit only once every cleanup task below (serial port + backend servers)
@@ -4267,7 +4259,7 @@ if (isElectron()) {
   const gotTheLock = electronApp.requestSingleInstanceLock()
   var lauchGUI = true;
   if (!gotTheLock) {
-    debug_log("Already running! Check the System Tray")
+    debug_log("Already running - the first instance brings its window to the front")
     electronApp.exit(0);
     electronApp.quit();
   } else {
@@ -4303,21 +4295,10 @@ if (isElectron()) {
     })
     // Create myWindow, load the rest of the app, etc...
     electronApp.on('ready', () => {
-      // P8: Windows auto-starts this app at login (see setLoginItemSettings
-      // below) - if it were shown every boot, that'd be an unwanted popup on
-      // every login, hence the historical "sit in Tray" default. But that
-      // same default was also silently applying to a user deliberately
-      // opening the app from the Start Menu/desktop shortcut, which is
-      // confusing for anyone who doesn't already know to look in the tray.
-      // wasOpenedAtLogin distinguishes the two: true only when Windows
-      // itself launched the app at boot via the login item, not when a
-      // human launched it directly - so only THAT case still starts hidden.
-      var openedAtLogin = process.platform == 'win32' && electronApp.getLoginItemSettings().wasOpenedAtLogin;
-      if (openedAtLogin) {
-        // Don't show window - sit in Tray
-      } else {
-        showJogWindow()
-      }
+      // Always open the window: since 2.0.1 there is no auto-start at login
+      // (see removeLegacyLoginItem) and no tray, so every start is someone
+      // opening the app on purpose.
+      showJogWindow()
     })
   }
 
@@ -4325,7 +4306,7 @@ if (isElectron()) {
     // Module to create native browser window.
 
     function createApp() {
-      createTrayIcon();
+      createDockMenu();
       if (process.platform == 'darwin') {
         debug_log("Creating MacOS Menu");
         createMenu();
@@ -4411,60 +4392,17 @@ if (isElectron()) {
       Menu.setApplicationMenu(Menu.buildFromTemplate(template));
     }
 
-    function createTrayIcon() {
-      if (process.platform !== 'darwin') {
-        appIcon = new Tray(
-          nativeImage.createFromPath(iconPath)
-        )
-        const contextMenu = Menu.buildFromTemplate([{
-          label: 'Open User Interface (GUI)',
-          click() {
-            // debug_log("Clicked Systray")
-            showJogWindow()
-          }
-        }, {
-          label: 'Quit ' + APP_DISPLAY_NAME + ' (Disables all integration until started again)',
-          click() {
-            quitAndCleanup(0);
-          }
-        }])
-        if (appIcon) {
-          appIcon.on('click', function() {
-            // debug_log("Clicked Systray")
-            showJogWindow()
-          })
+    // No tray icon (2.0.1): the app has no background mode - closing the
+    // window quits it. macOS keeps its dock menu with Quit.
+    function createDockMenu() {
+      if (process.platform !== 'darwin') return;
+      const dockMenu = Menu.buildFromTemplate([{
+        label: 'Quit ' + APP_DISPLAY_NAME,
+        click() {
+          quitAndCleanup(0);
         }
-
-        if (appIcon) {
-          appIcon.on('balloon-click', function() {
-            // debug_log("Clicked Systray")
-            showJogWindow()
-          })
-        }
-
-        // Call this again for Linux because we modified the context menu
-        if (appIcon) {
-          appIcon.setContextMenu(contextMenu)
-        }
-
-        if (appIcon) {
-          appIcon.displayBalloon({
-            icon: nativeImage.createFromPath(iconPath),
-            title: APP_DISPLAY_NAME + " Started",
-            // content: "OpenBuilds CONTROL has started successfully: Active on " + ip.address() + ":" + config.webPort
-            content: APP_DISPLAY_NAME + " has started successfully"
-          })
-        }
-      } else {
-        const dockMenu = Menu.buildFromTemplate([{
-          label: 'Quit ' + APP_DISPLAY_NAME + ' (Disables all integration until started again)',
-          click() {
-            quitAndCleanup(0);
-          }
-        }])
-        electronApp.dock.setMenu(dockMenu)
-      };
-
+      }])
+      electronApp.dock.setMenu(dockMenu)
     }
 
     function createJogWindow() {
