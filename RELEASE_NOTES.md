@@ -18,9 +18,8 @@ Sudah diuji di board UC-100 (GRBL Mythos 4A-AS).
 
 ## Deteksi USB putus
 
-- USB yang tercabut atau tersenggol kini terdeteksi dalam ±3 detik, juga saat Windows tidak memberi tanda
-  apa pun. Koneksi ditutup, status menjadi Not Connected, dan job dihentikan (bisa dilanjutkan lewat
-  notifikasi "Pekerjaan belum selesai"). Setelah itu cukup klik Connect lagi.
+- USB yang tercabut terdeteksi; koneksi yang tidak menjawab selama 3 detik (kecuali saat homing) juga
+  dianggap putus. Job dihentikan dan bisa dilanjutkan lewat notifikasi 'Pekerjaan belum selesai'.
 - Homing yang lama (controller memang diam selama homing) dan E-stop yang ditahan **tidak** dianggap putus.
 - Job tidak pernah dilanjutkan otomatis setelah koneksi kembali.
 
