@@ -618,6 +618,15 @@ var alarmAnswerTimer = null;
 // on a polled USB connection means the port is gone. 0 = not watching.
 var lastControllerRx = 0;
 var STATUS_WATCHDOG_MS = 3000;
+// ...except during a homing cycle: GRBL Mythos runs the homing loop
+// (limits.c limits_go_home) without servicing realtime commands, so "?" gets
+// no answer from $H until the cycle ends (bench 27 Nov: false "terputus"
+// mid-homing). Every other long command (M6, probe, G4, jog, $TLS/$TCZ, $RST,
+// $N= writes) still answers "?". While a homing command is in flight the
+// silence may last up to homingTimeoutMs(), computed from the board's own
+// settings as learnt in controllerSettings, never less than this.
+var HOMING_TIMEOUT_MIN_MS = 120000;
+var controllerSettings = {}; // "$N" number -> value, from "$N=v" lines and accepted "$N=v" writes
 // Queue indexes of the "$G" lines addQToEnd() adds after modal/T commands,
 // and the same flag for each sentBuffer entry: they are the sender's own
 // bookkeeping, never counted in "N baris/perintah dibatalkan".
@@ -1579,6 +1588,7 @@ io.on("connection", function(socket) {
         parser.on("data", function(data) {
           //console.log(data)
           lastControllerRx = Date.now(); // the controller is alive - see statusTick()
+          noteControllerSetting(data); // a $$ dump line - see homingTimeoutMs()
           var command = sentBuffer[0];
           // A line the controller prints on its own is not the answer to the
           // command in flight - it is logged without that command's label
@@ -1873,6 +1883,11 @@ io.on("connection", function(socket) {
               command = sentBuffer.shift();
               sentBufferInternal.shift();
               noteAnswerAfterAlarm();
+              if (/^\$RST=/i.test(String(command).trim())) {
+                controllerSettings = {}; // restored: unknown until the next $$
+              } else {
+                noteControllerSetting(command); // an accepted "$N=v" write
+              }
             }
             if (command == "$CD") {
               io.sockets.emit('fluidncConfig', fluidncConfig);
@@ -2798,12 +2813,62 @@ function onPortLost(reason) {
 // polled USB connection that is up (not while flashing firmware, status 6).
 function statusTick() {
   if (!(status.comms.connectionStatus > 0)) return;
-  if (status.comms.connectionStatus != 6 && status.comms.interfaces.type == 'usb' &&
-    lastControllerRx > 0 && Date.now() - lastControllerRx > STATUS_WATCHDOG_MS) {
-    onPortLost('tidak ada balasan dari controller selama ' + (STATUS_WATCHDOG_MS / 1000) + ' detik');
-    return;
+  if (status.comms.connectionStatus != 6 && status.comms.interfaces.type == 'usb' && lastControllerRx > 0) {
+    var homing = homingInFlight();
+    var limit = watchdogLimitMs(homing);
+    if (Date.now() - lastControllerRx > limit) {
+      onPortLost(homing ?
+        'homing tidak selesai dalam ' + Math.ceil(limit / 1000) + ' detik, tidak ada balasan dari controller' :
+        'tidak ada balasan dari controller selama ' + (limit / 1000) + ' detik');
+      return;
+    }
   }
-  addQRealtime("?");
+  addQRealtime("?"); // also during homing: answered once the cycle ends
+}
+
+function watchdogLimitMs(homing) {
+  return homing ? homingTimeoutMs() : STATUS_WATCHDOG_MS;
+}
+
+// "$H" (and "$HX".. single-axis forms) - grbl upper-cases and drops spaces.
+function isHomingCommand(line) {
+  return typeof line === 'string' && /^\$H[A-Z]?$/.test(line.replace(/\s+/g, '').toUpperCase());
+}
+
+// A homing command was written and its ok/error is not in yet - and no ALARM
+// came after it: the lines in flight at an ALARM are the first
+// alarmPendingAnswers entries of sentBuffer, and an ALARM ends the cycle.
+// Covers every path that sends one: console, the Home button, a job line.
+function homingInFlight() {
+  for (var i = alarmPendingAnswers; i < sentBuffer.length; i++) {
+    if (isHomingCommand(sentBuffer[i])) return true;
+  }
+  return false;
+}
+
+// The longest a homing cycle may take on this board: per axis the search
+// (1.5 x $13x travel at the $25 seek rate - limits.c HOMING_AXIS_SEARCH_SCALAR)
+// plus the locate moves (2 x 5 x $27 pull-off at the $24 feed rate, 2 x $27 at
+// seek) and the $26 debounce after each of the 3 phases. Never under 120 s.
+function homingTimeoutMs() {
+  var s = controllerSettings;
+  var num = function(n) { var v = Math.abs(Number(s[n])); return isFinite(v) ? v : 0; };
+  var seek = num(25), feed = num(24), pulloff = num(27), debounce = num(26);
+  var total = 0;
+  if (seek > 0) {
+    [130, 131, 132].forEach(function(n) {
+      total += 1.5 * num(n) / seek * 60000 +
+        ((feed > 0 ? 2 * 5 * pulloff / feed : 0) + 2 * pulloff / seek) * 60000 +
+        3 * debounce;
+    });
+  }
+  return Math.max(HOMING_TIMEOUT_MIN_MS, Math.ceil(total));
+}
+
+// A "$N=v" line: from the $$ dump (received), or a write the board accepted.
+function noteControllerSetting(line) {
+  var m = /^\$(\d+)=\s*(-?[\d.]+)/.exec(typeof line === 'string' ? line.trim() : '');
+  if (m) controllerSettings[m[1]] = parseFloat(m[2]);
 }
 
 function runJob(object) {
@@ -3235,6 +3300,7 @@ function stopPort() {
   status.comms.connectionStatus = 0;
   controllerReady = false;
   lastControllerRx = 0; // no port, nothing to watch
+  controllerSettings = {}; // the next board may differ
   // the UI shows "Controller: " + runStatus - it kept the last report
   // ("Hold:0") after the port closed
   status.comms.runStatus = 'Disconnected';

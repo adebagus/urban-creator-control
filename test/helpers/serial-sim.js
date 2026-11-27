@@ -69,13 +69,14 @@ const FUNCTIONS = [
   'commandRejection', 'rejectCommand', 'queueOperatorLine', 'onAlarmReported', 'noteAnswerAfterAlarm', 'onFirmwareBanner', 'isSpontaneousMessage',
   'parseVersionLine', 'portIsOpen', 'onPortWriteDone', 'onPortLost', 'statusTick', 'resetWhy', 'operatorLines',
   'reportUnansweredLines', 'realtimeLabel', 'unsentOperatorLineCount', 'noteIfQueuedBehind',
+  'isHomingCommand', 'homingInFlight', 'homingTimeoutMs', 'noteControllerSetting', 'watchdogLimitMs',
 ];
 const SOCKET_HANDLERS = ['runCommand', 'resetMachine', 'clearAlarm', 'jog', 'jogXY', 'jogTo', 'closePort'];
 const VARS = [
   /var modalCommands = \[[^\]]*\]\n/, /var modalCommandsRegExp = [^\n]*\n/,
   /var GRBL_RX_BUFFER_SIZE = [^\n]*\n/, /var GRBLHAL_RX_BUFFER_SIZE = [^\n]*\n/,
   /var ALARM_ANSWER_TIMEOUT_MS = [^\n]*\n/, /var SPONTANEOUS_MESSAGES = [^\n]*\n/,
-  /var STATUS_WATCHDOG_MS = [^\n]*\n/,
+  /var STATUS_WATCHDOG_MS = [^\n]*\n/, /var HOMING_TIMEOUT_MIN_MS = [^\n]*\n/,
 ].map(grabVar).join('');
 
 function isRealtimeByte(s) {
@@ -94,6 +95,9 @@ class MockGrbl {
     // power): the old port handle still takes writes, but nothing reaches the
     // board and nothing ever comes back - and serialport says nothing.
     this.dead = false;
+    // Running a homing cycle: Mythos' homing loop (limits.c) never services
+    // realtime commands, so "?" is only answered after the cycle ends.
+    this.homing = false;
   }
 
   statusLine() {
@@ -199,7 +203,7 @@ function createSim(opts = {}) {
     jogWindow: null, oldpinslist: [], echoNextStatusReport: false,
     controllerReady: opts.controllerReady === undefined ? true : opts.controllerReady,
     alarmActive: false, alarmPendingAnswers: 0, alarmAnswerTimer: null, unlockAfterBanner: false,
-    lastControllerRx: 0, internalQ: new Set(), sentBufferInternal: [],
+    lastControllerRx: 0, internalQ: new Set(), sentBufferInternal: [], controllerSettings: {},
     // the code's Date runs on the simulator's clock, so advance() moves it too
     Date: FakeDate,
     xPos: 0, yPos: 0, zPos: 0, aPos: 0, xOffset: 0, yOffset: 0, zOffset: 0, aOffset: 0,
@@ -275,7 +279,7 @@ function createSim(opts = {}) {
       for (let t = 0; t < ms; t += 200) {
         sim.advance(200);
         ctx.statusTick();
-        while (grbl.statusQueries > 0 && !grbl.dead) {
+        while (grbl.statusQueries > 0 && !grbl.dead && !grbl.homing) {
           grbl.statusQueries--;
           sim.rx(grbl.statusLine());
         }
