@@ -28,6 +28,8 @@ $(document).ready(function() {
   });
 });
 
+var limitSettingsRefreshTimer = null;
+
 function showGrbl(bool, firmware) {
   //console.log(firmware)
   // grblHAL settings enumeration ($ES, see grbl-settings-enum.js): remember which platform this connection
@@ -280,6 +282,14 @@ function initSocket() {
     // matches $number(s)=
     if (/^\$\d*=/.test(data.command) && data.response == 'ok') {
       grblSettings(data.command)
+      // $21/$22 typed in the console: confirm the firmware's real value with a
+      // $$ (as toggleATC() does for $341) - the badges follow it.
+      if (/^\$2[12]=/.test(data.command)) {
+        clearTimeout(limitSettingsRefreshTimer); // $21 and $22 together: one $$
+        limitSettingsRefreshTimer = setTimeout(function() {
+          sendGcode('$$');
+        }, 300);
+      }
     }
 
     // Parse Grbl Settings Feedback

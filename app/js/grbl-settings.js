@@ -162,6 +162,8 @@ function grblSettings(data) {
 
 
 
+  syncLimitStatusBadges();
+
   if (grblParams['$22'] > 0) {
     $('#gotozeroMPos').removeClass('disabled')
     $('#homeBtn').attr('disabled', false)
@@ -852,11 +854,20 @@ function syncHardLimitAndHomingFromFirmware() {
   $('#hardlimitsenabled:checkbox').prop('checked', hardLimitsOn);
   $('#homingenabled:checkbox').prop('checked', homingOn);
 
-  // P9: same read, extended to the read-only status badges on the Machine
-  // Control screen - same "one read, two places kept in sync" pattern as
-  // syncMachineProfileCheckbox() doing double duty for the Router/Laser
-  // buttons there. These badges have no toggle of their own; they only ever
-  // reflect this ground truth.
+  syncLimitStatusBadges();
+}
+
+// P9: same read, extended to the read-only status badges on the Machine
+// Control screen - same "one read, two places kept in sync" pattern as
+// syncMachineProfileCheckbox() doing double duty for the Router/Laser
+// buttons there. These badges have no toggle of their own; they only ever
+// reflect this ground truth. Also called from grblSettings() for every $$
+// line and every accepted "$N=" write (bench 27 Nov: "$22=1" typed in the
+// console left "Homing: OFF" until the settings tab was rebuilt). Badges
+// only: the settings form's checkboxes may hold an unsaved edit.
+function syncLimitStatusBadges() {
+  var hardLimitsOn = parseFloat(grblParams['$21']) == 1;
+  var homingOn = parseFloat(grblParams['$22']) > 0;
   $('#hardLimitStatusBadge').text('Hard Limit: ' + (hardLimitsOn ? 'ON' : 'OFF')).toggleClass('status-on', hardLimitsOn);
   $('#homingStatusBadge').text('Homing: ' + (homingOn ? 'ON' : 'OFF')).toggleClass('status-on', homingOn);
 }
